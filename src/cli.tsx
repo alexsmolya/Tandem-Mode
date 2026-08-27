@@ -138,20 +138,31 @@ function TurnView({
     <Box flexDirection="column" gap={1}>
       {reasoning.length > 0 && (
         <Box flexDirection="column">
-          <Text dimColor>thinking:</Text>
+          <Text dimColor>✻ Razmišljam…</Text>
           <Text dimColor>{reasoning}</Text>
         </Box>
       )}
 
-      {toolLog.map((t) => (
-        <Box key={t.id} flexDirection="column">
-          <Text color={t.status === "denied" ? "yellow" : t.isError ? "red" : "cyan"}>
-            [{t.status === "running" ? "…" : t.status === "denied" ? "odbijeno" : "gotovo"}] {t.name}(
-            {JSON.stringify(t.args)})
-          </Text>
-          {t.output && <Text dimColor>{t.output.slice(0, 500)}</Text>}
-        </Box>
-      ))}
+      {toolLog.map((t) => {
+        const lines = t.output?.split("\n") ?? [];
+        const preview = lines.slice(0, 3).join("\n");
+        const more = lines.length > 3;
+        return (
+          <Box key={t.id} flexDirection="column">
+            <Text color={t.status === "denied" ? "yellow" : t.isError ? "red" : "cyan"}>
+              ⏺ {t.name}({JSON.stringify(t.args)})
+              {t.status === "running" ? "…" : t.status === "denied" ? " (odbijeno)" : ""}
+            </Text>
+            {preview && (
+              <Text dimColor>
+                {"  ⎿  "}
+                {preview.slice(0, 400)}
+                {more || preview.length > 400 ? ` … (${lines.length} linija)` : ""}
+              </Text>
+            )}
+          </Box>
+        );
+      })}
 
       {pending && (
         <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
@@ -162,18 +173,38 @@ function TurnView({
         </Box>
       )}
 
-      {content.length > 0 && (
-        <Box flexDirection="column">
-          <Text bold>odgovor:</Text>
-          <Text>{content}</Text>
-        </Box>
-      )}
+      {content.length > 0 && <Text>{content}</Text>}
 
       {usageLine && <Text color="gray">{usageLine}</Text>}
       {notice && <Text color="yellow">{notice}</Text>}
       {error && <Text color="red">Greška: {error}</Text>}
     </Box>
   );
+}
+
+function truncatePath(p: string, max = 50): string {
+  return p.length > max ? `…${p.slice(-(max - 1))}` : p;
+}
+
+function Banner({ state }: { state: RuntimeState }) {
+  const { exit } = useApp();
+  useEffect(() => {
+    exit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
+      <Text bold color="cyan">
+        ✻ Tandem Mode
+      </Text>
+      <Text dimColor>{truncatePath(state.cwd)}</Text>
+    </Box>
+  );
+}
+
+async function showBanner(state: RuntimeState): Promise<void> {
+  await render(<Banner state={state} />).waitUntilExit();
 }
 
 async function runTurnConfig(state: RuntimeState, turn: TurnConfig, askApproval: Approver): Promise<void> {
@@ -242,7 +273,8 @@ function createLineApprover(): { approve: Approver; close: () => void } {
  * `.question()`.
  */
 async function runRepl(state: RuntimeState): Promise<void> {
-  console.log(`Tandem Mode — sesija ${state.session.id}. /help za komande, /exit za izlaz.\n`);
+  await showBanner(state);
+  console.log("/help za komande, /exit za izlaz.\n");
   if (isPeakHour(new Date())) {
     console.log("⚠ Trenutno je peak sat (01–04h ili 06–10h UTC) — cene su duplo veće nego off-peak.\n");
   }
