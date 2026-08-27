@@ -96,10 +96,15 @@ export async function* runAgentLoop(
         function: { name: v.name ?? "", arguments: v.args },
       }));
 
-    const assistantMessage: ChatMessage =
-      toolCalls.length > 0
-        ? { role: "assistant", content: content || null, reasoningContent: reasoning, toolCalls }
-        : { role: "assistant", content: content || null };
+    // `tools` se šalje na SVAKI poziv u ovoj petlji, pa dokumentacija traži
+    // da se reasoning_content svakog prethodnog poteza vrati — ne samo onih
+    // koji su zvali alat (inače dokumentovano 400, videti docs/api-notes.md #2).
+    const assistantMessage: ChatMessage = {
+      role: "assistant",
+      content: content || null,
+      ...(reasoning ? { reasoningContent: reasoning } : {}),
+      ...(toolCalls.length > 0 ? { toolCalls } : {}),
+    };
 
     messages.push(assistantMessage);
     await appendSessionMessage(opts.session, assistantMessage);
