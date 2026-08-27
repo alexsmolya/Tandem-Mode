@@ -1,21 +1,19 @@
-import React, { useEffect, useRef, useState } from "react";
-import { render, Text, Box, useApp, useInput } from "ink";
-import { loadEnv } from "./config/env.js";
+import React, { useEffect, useState } from "react";
+import { render, Text, Box, useApp } from "ink";
+import readline from "node:readline";
+import { resolveApiKey, resolveBaseUrl } from "./config/env.js";
+import { loadConfig } from "./config/store.js";
+import { DEFAULT_CONFIG } from "./config/schema.js";
+import { runFirstRunWizard } from "./repl/wizard.js";
+import { handleCommand } from "./repl/commands.js";
+import { SYSTEM_PROMPT } from "./repl/system-prompt.js";
 import { runAgentLoop, type AgentEvent } from "./agent/loop.js";
 import { UsageAccumulator } from "./agent/usage.js";
-import {
-  appendSessionMessage,
-  createSession,
-  findLatestSession,
-  loadSessionMessages,
-  type Session,
-} from "./agent/session.js";
+import { appendSessionMessage, createSession, findLatestSession, loadSessionMessages } from "./agent/session.js";
+import type { RuntimeState } from "./repl/state.js";
 import type { ChatMessage } from "./deepseek/types.js";
 
-const SYSTEM_PROMPT = `Ti si Tandem Mode, coding agent koji radi u realnom repozitorijumu.
-Koristi alate (read_file, list_dir, search, edit, git_diff, shell) da istražiš
-kod i uradiš zatraženu izmenu. Kad završiš zadatak, odgovori sažeto bez tool
-poziva da se petlja zaustavi.`;
+type Approver = (toolName: string, args: Record<string, unknown>) => Promise<boolean>;
 
 interface ToolLogEntry {
   id: string;
@@ -26,100 +24,55 @@ interface ToolLogEntry {
   isError?: boolean;
 }
 
-interface PendingApproval {
-  toolName: string;
-  args: Record<string, unknown>;
-  resolve: (approved: boolean) => void;
-}
-
-function App({
-  prompt,
-  cwd,
-  resume,
-  autoApprove,
+function TurnView({
+  state,
+  userText,
+  askApproval,
+  onDone,
 }: {
-  prompt: string;
-  cwd: string;
-  resume: boolean;
-  autoApprove: boolean;
-}): React.ReactElement {
+  state: RuntimeState;
+  userText: string;
+  askApproval: Approver;
+  onDone: () => void;
+}) {
   const { exit } = useApp();
   const [reasoning, setReasoning] = useState("");
   const [content, setContent] = useState("");
   const [toolLog, setToolLog] = useState<ToolLogEntry[]>([]);
-  const [pending, setPending] = useState<PendingApproval | null>(null);
+  const [pending, setPending] = useState<{ toolName: string; args: Record<string, unknown> } | null>(null);
   const [usageLine, setUsageLine] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [finished, setFinished] = useState(false);
-  const pendingRef = useRef<PendingApproval | null>(null);
-
-  useInput(
-    (input) => {
-      if (!pendingRef.current) return;
-      const lower = input.toLowerCase();
-      if (lower === "y") {
-        pendingRef.current.resolve(true);
-        pendingRef.current = null;
-        setPending(null);
-      } else if (lower === "n") {
-        pendingRef.current.resolve(false);
-        pendingRef.current = null;
-        setPending(null);
-      }
-    },
-    // Aktivan samo kad stvarno čekamo unos, da ne traži raw-mode uzalud.
-    { isActive: pending !== null }
-  );
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     async function run(): Promise<void> {
-      const env = loadEnv();
-      const usage = new UsageAccumulator();
+      const userMsg: ChatMessage = { role: "user", content: userText };
+      state.messages.push(userMsg);
+      await appendSessionMessage(state.session, userMsg);
 
-      let session: Session;
-      let messages: ChatMessage[];
-
-      if (resume) {
-        const existing = await findLatestSession(cwd);
-        if (!existing) throw new Error("Nema prethodne sesije za nastavak u ovom direktorijumu.");
-        session = existing;
-        messages = await loadSessionMessages(existing.filePath);
-        const userMsg: ChatMessage = { role: "user", content: prompt };
-        messages.push(userMsg);
-        await appendSessionMessage(session, userMsg);
-      } else {
-        session = await createSession(cwd);
-        const systemMsg: ChatMessage = { role: "system", content: SYSTEM_PROMPT };
-        const userMsg: ChatMessage = { role: "user", content: prompt };
-        messages = [systemMsg, userMsg];
-        await appendSessionMessage(session, systemMsg);
-        await appendSessionMessage(session, userMsg);
-      }
-
-      const approve = (toolName: string, args: Record<string, unknown>): Promise<boolean> => {
-        if (autoApprove) {
-          // Upozorenje ide u stderr, van Ink render stabla.
+      const approve = async (toolName: string, args: Record<string, unknown>): Promise<boolean> => {
+        if (state.autoApprove) {
           console.error(`[--yes] auto-odobreno: ${toolName}(${JSON.stringify(args)})`);
-          return Promise.resolve(true);
+          return true;
         }
-        return new Promise((resolve) => {
-          const entry: PendingApproval = { toolName, args, resolve };
-          pendingRef.current = entry;
-          setPending(entry);
-        });
+        setPending({ toolName, args });
+        const approved = await askApproval(toolName, args);
+        setPending(null);
+        return approved;
       };
 
-      const iterator = runAgentLoop(messages, {
-        env,
-        model: "deepseek-v4-pro",
-        thinking: { reasoningEffort: "high" },
-        cwd,
-        session,
-        usage,
-        approve,
-      });
+      const thinking = state.thinkingEnabled ? { reasoningEffort: state.reasoningEffort } : undefined;
 
-      for await (const event of iterator) {
+      for await (const event of runAgentLoop(state.messages, {
+        env: state.env,
+        model: state.model,
+        cwd: state.cwd,
+        session: state.session,
+        usage: state.usage,
+        approve,
+        ...(thinking !== undefined ? { thinking } : {}),
+        ...(state.budgetUsd !== undefined ? { budgetUsd: state.budgetUsd } : {}),
+      })) {
         handleEvent(event);
       }
 
@@ -132,10 +85,7 @@ function App({
             setContent((prev) => prev + event.delta);
             break;
           case "tool_call_start":
-            setToolLog((prev) => [
-              ...prev,
-              { id: event.id, name: event.name, args: event.args, status: "running" },
-            ]);
+            setToolLog((prev) => [...prev, { id: event.id, name: event.name, args: event.args, status: "running" }]);
             break;
           case "tool_call_result":
             setToolLog((prev) =>
@@ -148,9 +98,9 @@ function App({
             setToolLog((prev) => prev.map((t) => (t.id === event.id ? { ...t, status: "denied" } : t)));
             break;
           case "usage": {
-            const total = usage.totals();
+            const total = state.usage.totals();
             setUsageLine(
-              `tokens: ${total.promptTokens} in (${total.promptCacheHitTokens} cached) / ${total.completionTokens} out · ~$${usage.estimatedCostUsd().toFixed(4)} · ${usage.callCount} poziva`
+              `tokens: ${total.promptTokens} in (${total.promptCacheHitTokens} cached) / ${total.completionTokens} out · ~$${state.usage.estimatedCostUsd().toFixed(4)} · ${state.usage.callCount} poziva`
             );
             break;
           }
@@ -158,7 +108,12 @@ function App({
             setContent(event.content);
             break;
           case "max_iterations_reached":
-            setError("Dostignut je maksimalan broj iteracija bez finalnog odgovora.");
+            setNotice("Dostignut je maksimalan broj iteracija bez finalnog odgovora.");
+            break;
+          case "budget_exceeded":
+            setNotice(
+              `Budžet od $${event.budgetUsd.toFixed(2)} je dostignut (potrošeno ~$${event.spentUsd.toFixed(4)}). Petlja je zaustavljena pre sledećeg poziva — sesija je sačuvana, poveci budžet sa /budget i nastavi.`
+            );
             break;
         }
       }
@@ -167,11 +122,10 @@ function App({
     run()
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : String(err));
-        process.exitCode = 1;
       })
       .finally(() => {
-        setFinished(true);
         exit();
+        onDone();
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -200,31 +154,237 @@ function App({
           <Text color="yellow" bold>
             Destruktivna akcija: {pending.toolName}({JSON.stringify(pending.args)})
           </Text>
-          <Text>Dozvoli? (y/n)</Text>
+          <Text dimColor>Odgovor se traži ispod, u redu za unos.</Text>
         </Box>
       )}
 
-      <Box flexDirection="column">
-        <Text bold>odgovor:</Text>
-        <Text>{content}</Text>
-      </Box>
+      {content.length > 0 && (
+        <Box flexDirection="column">
+          <Text bold>odgovor:</Text>
+          <Text>{content}</Text>
+        </Box>
+      )}
 
       {usageLine && <Text color="gray">{usageLine}</Text>}
+      {notice && <Text color="yellow">{notice}</Text>}
       {error && <Text color="red">Greška: {error}</Text>}
-      {finished && !error && <Text color="green">✓ gotovo</Text>}
     </Box>
   );
 }
 
-const argv = process.argv.slice(2);
-const flags = new Set(["--resume", "-r", "--yes", "-y"]);
-const resume = argv.includes("--resume") || argv.includes("-r");
-const autoApprove = argv.includes("--yes") || argv.includes("-y");
-const prompt = argv.filter((a) => !flags.has(a)).join(" ").trim();
-
-if (!prompt) {
-  console.error('Upotreba: pnpm dev "zadatak" [--resume] [--yes]');
-  process.exit(1);
+async function runTurn(state: RuntimeState, userText: string, askApproval: Approver): Promise<void> {
+  await new Promise<void>((resolve) => {
+    render(<TurnView state={state} userText={userText} askApproval={askApproval} onDone={resolve} />);
+  });
 }
 
-render(<App prompt={prompt} cwd={process.cwd()} resume={resume} autoApprove={autoApprove} />);
+/** Za single-shot poteze: sopstveni for-await čitač linija samo za y/n odobrenja. */
+function createLineApprover(): { approve: Approver; close: () => void } {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const resolveRef: { current: ((approved: boolean) => void) | null } = { current: null };
+
+  const consumeLines = async (): Promise<void> => {
+    for await (const rawLine of rl) {
+      if (resolveRef.current) {
+        resolveRef.current(rawLine.trim().toLowerCase() === "y");
+        resolveRef.current = null;
+      }
+    }
+  };
+  void consumeLines();
+
+  const approve: Approver = (toolName, args) => {
+    console.log(`\nDozvoli izvršavanje ${toolName}(${JSON.stringify(args)})? (y/n)`);
+    return new Promise<boolean>((resolve) => {
+      resolveRef.current = resolve;
+    });
+  };
+
+  return { approve, close: () => rl.close() };
+}
+
+/**
+ * `.question()` je nepouzdan na piped/non-TTY stdin-u posle prvog poziva
+ * (poznata Node quirka — drugi poziv nikad ne razrešava). Zato se čitanje
+ * linija radi isključivo preko `for await...of rl`, koje pouzdano isporučuje
+ * svaku liniju, uz ručni state-machine za odobrenje umesto ugnježdenog
+ * `.question()`.
+ */
+async function runRepl(state: RuntimeState): Promise<void> {
+  console.log(`Tandem Mode — sesija ${state.session.id}. /help za komande, /exit za izlaz.\n`);
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: "> " });
+  let closed = false;
+  rl.on("close", () => {
+    closed = true;
+  });
+  const showPrompt = (): void => {
+    if (!closed) rl.prompt();
+  };
+
+  const approvalRef: { current: ((approved: boolean) => void) | null } = { current: null };
+  let turnActive = false;
+  let lastTurn: Promise<void> = Promise.resolve();
+
+  const askApproval: Approver = (toolName, args) => {
+    console.log(`\nDozvoli izvršavanje ${toolName}(${JSON.stringify(args)})? (y/n)`);
+    return new Promise<boolean>((resolve) => {
+      approvalRef.current = resolve;
+    });
+  };
+
+  showPrompt();
+
+  for await (const rawLine of rl) {
+    const line = rawLine.trim();
+
+    if (approvalRef.current) {
+      approvalRef.current(line.toLowerCase() === "y");
+      approvalRef.current = null;
+      continue;
+    }
+
+    if (!line) {
+      showPrompt();
+      continue;
+    }
+
+    if (turnActive) {
+      console.log("Sačekaj da se trenutni potez završi.");
+      continue;
+    }
+
+    if (line.startsWith("/")) {
+      const outcome = await handleCommand(line, state);
+      if (outcome === "exit") break;
+      showPrompt();
+      continue;
+    }
+
+    turnActive = true;
+    lastTurn = runTurn(state, line, askApproval).finally(() => {
+      turnActive = false;
+      showPrompt();
+    });
+  }
+
+  await lastTurn;
+  if (!closed) rl.close();
+}
+
+interface ParsedArgv {
+  prompt: string;
+  resume: boolean;
+  autoApprove: boolean;
+  model?: "deepseek-v4-pro" | "deepseek-v4-flash";
+  effort?: "low" | "high" | "max";
+  budgetUsd?: number;
+}
+
+function parseArgv(argv: string[]): ParsedArgv {
+  const rest: string[] = [];
+  let resume = false;
+  let autoApprove = false;
+  let model: ParsedArgv["model"];
+  let effort: ParsedArgv["effort"];
+  let budgetUsd: number | undefined;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--resume" || arg === "-r") {
+      resume = true;
+    } else if (arg === "--yes" || arg === "-y") {
+      autoApprove = true;
+    } else if (arg === "--model") {
+      const value = argv[++i];
+      if (value === "deepseek-v4-pro" || value === "deepseek-v4-flash") model = value;
+    } else if (arg === "--effort") {
+      const value = argv[++i];
+      if (value === "low" || value === "high" || value === "max") effort = value;
+    } else if (arg === "--budget") {
+      const value = Number(argv[++i]);
+      if (Number.isFinite(value) && value > 0) budgetUsd = value;
+    } else if (arg !== undefined) {
+      rest.push(arg);
+    }
+  }
+
+  const parsed: ParsedArgv = { prompt: rest.join(" ").trim(), resume, autoApprove };
+  if (model !== undefined) parsed.model = model;
+  if (effort !== undefined) parsed.effort = effort;
+  if (budgetUsd !== undefined) parsed.budgetUsd = budgetUsd;
+  return parsed;
+}
+
+async function main(): Promise<void> {
+  const cwd = process.cwd();
+  const parsed = parseArgv(process.argv.slice(2));
+
+  const config = await loadConfig(cwd);
+  let apiKey = await resolveApiKey();
+
+  if (!apiKey) {
+    if (!process.stdin.isTTY) {
+      console.error(
+        "Nema DeepSeek API ključa. Postavi DEEPSEEK_API_KEY env promenljivu ili pokreni tandem interaktivno da odradiš first-run wizard."
+      );
+      process.exitCode = 1;
+      return;
+    }
+    const wizardConfig = await runFirstRunWizard();
+    Object.assign(config, wizardConfig);
+    apiKey = await resolveApiKey();
+    if (!apiKey) {
+      console.error("Ključ nije sačuvan ispravno — pokušaj ponovo.");
+      process.exitCode = 1;
+      return;
+    }
+  }
+
+  const env = { apiKey, baseUrl: resolveBaseUrl(config) };
+
+  let session;
+  let messages: ChatMessage[];
+  if (parsed.resume) {
+    const existing = await findLatestSession(cwd);
+    if (!existing) {
+      console.error("Nema prethodne sesije za nastavak u ovom direktorijumu.");
+      process.exitCode = 1;
+      return;
+    }
+    session = existing;
+    messages = await loadSessionMessages(existing.filePath);
+  } else {
+    session = await createSession(cwd);
+    const systemMsg: ChatMessage = { role: "system", content: SYSTEM_PROMPT };
+    messages = [systemMsg];
+    await appendSessionMessage(session, systemMsg);
+  }
+
+  const state: RuntimeState = {
+    env,
+    cwd,
+    model: parsed.model ?? config.defaultModel ?? DEFAULT_CONFIG.defaultModel,
+    thinkingEnabled: true,
+    reasoningEffort: parsed.effort ?? config.defaultReasoningEffort ?? DEFAULT_CONFIG.defaultReasoningEffort,
+    autoApprove: parsed.autoApprove,
+    session,
+    messages,
+    usage: new UsageAccumulator(),
+  };
+  const budgetUsd = parsed.budgetUsd ?? config.budgetUsd;
+  if (budgetUsd !== undefined) state.budgetUsd = budgetUsd;
+
+  if (parsed.prompt) {
+    const approver = createLineApprover();
+    await runTurn(state, parsed.prompt, approver.approve);
+    approver.close();
+  } else {
+    await runRepl(state);
+  }
+}
+
+main().catch((err: unknown) => {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exitCode = 1;
+});

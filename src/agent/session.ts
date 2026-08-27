@@ -32,6 +32,33 @@ export async function loadSessionMessages(filePath: string): Promise<ChatMessage
     .map((line) => JSON.parse(line) as ChatMessage);
 }
 
+export async function findSessionById(cwd: string, id: string): Promise<Session | null> {
+  const filePath = path.join(sessionsDir(cwd), `${id}.jsonl`);
+  try {
+    await stat(filePath);
+  } catch {
+    return null;
+  }
+  return { id, filePath };
+}
+
+export async function listSessions(cwd: string): Promise<Session[]> {
+  const dir = sessionsDir(cwd);
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return [];
+  }
+
+  const jsonlFiles = entries.filter((f) => f.endsWith(".jsonl"));
+  const withMtime = await Promise.all(
+    jsonlFiles.map(async (f) => ({ f, mtime: (await stat(path.join(dir, f))).mtimeMs }))
+  );
+  withMtime.sort((a, b) => b.mtime - a.mtime);
+  return withMtime.map(({ f }) => ({ id: f.replace(/\.jsonl$/, ""), filePath: path.join(dir, f) }));
+}
+
 export async function findLatestSession(cwd: string): Promise<Session | null> {
   const dir = sessionsDir(cwd);
   let entries: string[];

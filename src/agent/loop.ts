@@ -13,16 +13,20 @@ export type AgentEvent =
   | { type: "tool_call_denied"; id: string; name: string }
   | { type: "usage"; usage: UsageInfo }
   | { type: "final"; content: string }
-  | { type: "max_iterations_reached" };
+  | { type: "max_iterations_reached" }
+  | { type: "budget_exceeded"; spentUsd: number; budgetUsd: number };
 
 export interface AgentLoopOptions {
   env: TandemEnv;
   model: "deepseek-v4-pro" | "deepseek-v4-flash";
-  thinking: ThinkingConfig;
+  /** `undefined` = thinking mode isključen za ovaj poziv. */
+  thinking?: ThinkingConfig;
   cwd: string;
   session: Session;
   usage: UsageAccumulator;
   maxIterations?: number;
+  /** Prekida PRE sledećeg poziva ako je akumulirana cena >= ovome. */
+  budgetUsd?: number;
   /** Pozvano pre svake destruktivne akcije. */
   approve: (toolName: string, args: Record<string, unknown>) => Promise<boolean>;
 }
@@ -40,6 +44,14 @@ export async function* runAgentLoop(
   const maxIterations = opts.maxIterations ?? 25;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
+    if (opts.budgetUsd !== undefined) {
+      const spent = opts.usage.estimatedCostUsd();
+      if (spent >= opts.budgetUsd) {
+        yield { type: "budget_exceeded", spentUsd: spent, budgetUsd: opts.budgetUsd };
+        return;
+      }
+    }
+
     let reasoning = "";
     let content = "";
     const toolCallBuf = new Map<number, { id?: string; name?: string; args: string }>();
@@ -47,8 +59,8 @@ export async function* runAgentLoop(
     for await (const ev of streamChatCompletion(opts.env, {
       model: opts.model,
       messages,
-      thinking: opts.thinking,
       tools: toolSpecs,
+      ...(opts.thinking !== undefined ? { thinking: opts.thinking } : {}),
     })) {
       switch (ev.type) {
         case "reasoning_delta":

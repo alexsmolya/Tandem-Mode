@@ -124,14 +124,28 @@ playground-u (read → edit → verifikacija, `--resume` kontinuitet) — pravi
 WP plugin test čeka pristup tom repou.
 
 ### M2 — UX sloj (1–2 nedelje)
-- [ ] Komande: `/model`, `/thinking`, `/effort`, `/status`, `/usage`,
-      `/budget`, `/new`, `/resume`, `/clear`, `/help`
-- [ ] Konfiguracija: session > project > global
-- [ ] API ključ u OS credential storage, maskiran svuda, nikad u logu,
-      nikad u model kontekstu
-- [ ] Budget hard-stop: prekida PRE sledećeg API poziva, čuva sesiju,
-      nastavak posle povećanja budžeta
-- [ ] First-run wizard (ključ + default mode)
+- [x] Komande: `/model`, `/thinking`, `/effort`, `/status`, `/usage`,
+      `/budget`, `/new`, `/resume`, `/clear`, `/help` — interaktivni REPL
+      (`tandem` bez argumenta); `tandem "task"` ostaje single-shot za
+      skriptovanje/CI, sad i sa `--model`/`--effort`/`--budget` flagovima
+- [x] Konfiguracija: session (runtime, slash komande) > project
+      (`.tandem/config.json` u cwd) > global (`~/.tandem/config.json`)
+- [x] API ključ u OS credential storage (`cross-keychain` — Windows
+      Credential Manager, native binding sa CLI/file fallback-om), nikad u
+      logu; `DEEPSEEK_API_KEY` env i dalje radi kao eksplicitan override za CI
+- [x] Budget hard-stop: proverava se PRE svakog poziva u petlji, prekida bez
+      greške, sesija ostaje sačuvana (JSONL), nastavak radi odmah posle
+      `/budget <veći iznos>` u istoj sesiji
+- [x] First-run wizard (`@inquirer/prompts` — maskiran unos ključa, izbor
+      default modela/effort-a); **NIJE testiran end-to-end** — traži pravi
+      TTY, nemoguće u ovom razvojnom okruženju, treba ručna provera
+
+**Napomena:** čitanje komandi u REPL-u je namerno event-driven
+(`for await...of rl`), ne `.question()` — potonji se pokazao nepouzdan na
+non-TTY/piped stdin (drugi poziv nikad ne razrešava, potvrđeno izolovanim
+testom). Usput otkrivena i TS CFA zamka: promenljiva zatvorena u closure-u i
+ponovo dodeljena unutar petlje/IIFE-a suzi se na `never` — zaobiđeno `{current}`
+ref-objektom umesto gole `let`.
 
 ### M3 — Orkestracija: planner / worker / reviewer (2–3 nedelje)
 - [ ] Planner (Pro, thinking ON, effort MAX) → plan kao **JSON schema**,
