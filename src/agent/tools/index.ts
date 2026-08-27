@@ -7,6 +7,7 @@ import { editTool } from "./edit.js";
 import { gitDiffTool } from "./gitDiff.js";
 import { shellTool } from "./shell.js";
 import { viewImageTool } from "./viewImage.js";
+import { webSearchTool } from "./webSearch.js";
 
 export const allTools: ToolDefinition[] = [
   readFileTool,
@@ -16,6 +17,7 @@ export const allTools: ToolDefinition[] = [
   gitDiffTool,
   shellTool,
   viewImageTool,
+  webSearchTool,
 ];
 
 export const toolSpecs = allTools.map(toToolSpec);

@@ -37,6 +37,7 @@ export interface ChatCompletionParams {
   tools?: ToolSpec[];
   /** Zahteva validan JSON string kao `content` — šema se opisuje u promptu, API je ne nameće. */
   jsonOutput?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface ChatCompletionResult {

@@ -24,7 +24,7 @@ async function* readSseLines(body: ReadableStream<Uint8Array>): AsyncGenerator<s
   }
 }
 
-function parseUsage(raw: Record<string, unknown>): UsageInfo {
+export function parseUsage(raw: Record<string, unknown>): UsageInfo {
   const completionDetails = raw["completion_tokens_details"] as
     | Record<string, unknown>
     | undefined;
@@ -57,6 +57,7 @@ export async function* streamChatCompletion(
       "Content-Type": "application/json",
       Authorization: `Bearer ${env.apiKey}`,
     },
+    ...(params.signal ? { signal: params.signal } : {}),
     body: JSON.stringify({
       model: params.model,
       messages: params.messages.map(toWireMessage),
@@ -134,6 +135,7 @@ export async function chatCompletionOnce(
       "Content-Type": "application/json",
       Authorization: `Bearer ${env.apiKey}`,
     },
+    ...(params.signal ? { signal: params.signal } : {}),
     body: JSON.stringify({
       model: params.model,
       messages: params.messages.map(toWireMessage),

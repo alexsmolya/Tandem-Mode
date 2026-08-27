@@ -1,9 +1,13 @@
 import type { ToolSpec } from "../../deepseek/types.js";
 import type { TandemEnv } from "../../config/env.js";
+import type { UsageAccumulator } from "../usage.js";
 
 export interface ToolContext {
   cwd: string;
   env: TandemEnv;
+  /** Alati koji sami zovu API (vision, web search) prijavljuju svoj usage ovde. */
+  usage: UsageAccumulator;
+  signal?: AbortSignal;
 }
 
 export interface ToolResult {

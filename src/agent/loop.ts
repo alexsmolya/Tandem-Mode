@@ -14,7 +14,8 @@ export type AgentEvent =
   | { type: "usage"; usage: UsageInfo }
   | { type: "final"; content: string }
   | { type: "max_iterations_reached" }
-  | { type: "budget_exceeded"; spentUsd: number; budgetUsd: number };
+  | { type: "budget_exceeded"; spentUsd: number; budgetUsd: number }
+  | { type: "interrupted" };
 
 export interface AgentLoopOptions {
   env: TandemEnv;
@@ -27,8 +28,14 @@ export interface AgentLoopOptions {
   maxIterations?: number;
   /** Prekida PRE sledećeg poziva ako je akumulirana cena >= ovome. */
   budgetUsd?: number;
+  /** ESC u REPL-u — prekida trenutni API poziv/alat, čuva parcijalan rezultat. */
+  signal?: AbortSignal;
   /** Pozvano pre svake destruktivne akcije. */
   approve: (toolName: string, args: Record<string, unknown>) => Promise<boolean>;
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
 }
 
 /**
@@ -40,10 +47,15 @@ export async function* runAgentLoop(
   messages: ChatMessage[],
   opts: AgentLoopOptions
 ): AsyncGenerator<AgentEvent> {
-  const ctx: ToolContext = { cwd: opts.cwd, env: opts.env };
+  const ctx: ToolContext = { cwd: opts.cwd, env: opts.env, usage: opts.usage, ...(opts.signal ? { signal: opts.signal } : {}) };
   const maxIterations = opts.maxIterations ?? 25;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {
+    if (opts.signal?.aborted) {
+      yield { type: "interrupted" };
+      return;
+    }
+
     if (opts.budgetUsd !== undefined) {
       const spent = opts.usage.estimatedCostUsd();
       if (spent >= opts.budgetUsd) {
@@ -56,36 +68,54 @@ export async function* runAgentLoop(
     let content = "";
     const toolCallBuf = new Map<number, { id?: string; name?: string; args: string }>();
 
-    for await (const ev of streamChatCompletion(opts.env, {
-      model: opts.model,
-      messages,
-      tools: toolSpecs,
-      ...(opts.thinking !== undefined ? { thinking: opts.thinking } : {}),
-    })) {
-      switch (ev.type) {
-        case "reasoning_delta":
-          reasoning += ev.delta;
-          yield { type: "reasoning_delta", delta: ev.delta };
-          break;
-        case "content_delta":
-          content += ev.delta;
-          yield { type: "content_delta", delta: ev.delta };
-          break;
-        case "tool_call_delta": {
-          const buf = toolCallBuf.get(ev.index) ?? { args: "" };
-          if (ev.id) buf.id = ev.id;
-          if (ev.name) buf.name = ev.name;
-          if (ev.argumentsDelta) buf.args += ev.argumentsDelta;
-          toolCallBuf.set(ev.index, buf);
-          break;
+    try {
+      for await (const ev of streamChatCompletion(opts.env, {
+        model: opts.model,
+        messages,
+        tools: toolSpecs,
+        ...(opts.thinking !== undefined ? { thinking: opts.thinking } : {}),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      })) {
+        switch (ev.type) {
+          case "reasoning_delta":
+            reasoning += ev.delta;
+            yield { type: "reasoning_delta", delta: ev.delta };
+            break;
+          case "content_delta":
+            content += ev.delta;
+            yield { type: "content_delta", delta: ev.delta };
+            break;
+          case "tool_call_delta": {
+            const buf = toolCallBuf.get(ev.index) ?? { args: "" };
+            if (ev.id) buf.id = ev.id;
+            if (ev.name) buf.name = ev.name;
+            if (ev.argumentsDelta) buf.args += ev.argumentsDelta;
+            toolCallBuf.set(ev.index, buf);
+            break;
+          }
+          case "usage":
+            opts.usage.add(opts.model, ev.usage);
+            yield { type: "usage", usage: ev.usage };
+            break;
+          case "done":
+            break;
         }
-        case "usage":
-          opts.usage.add(opts.model, ev.usage);
-          yield { type: "usage", usage: ev.usage };
-          break;
-        case "done":
-          break;
       }
+    } catch (err) {
+      if (!isAbortError(err)) throw err;
+      // Prekinuto usred streama — sačuvaj šta god je stiglo do sad kao poruku,
+      // ali bez tool_calls (nepotpuni argumenti se ne mogu pouzdano izvršiti).
+      if (content || reasoning) {
+        const partialMessage: ChatMessage = {
+          role: "assistant",
+          content: content || null,
+          ...(reasoning ? { reasoningContent: reasoning } : {}),
+        };
+        messages.push(partialMessage);
+        await appendSessionMessage(opts.session, partialMessage);
+      }
+      yield { type: "interrupted" };
+      return;
     }
 
     const toolCalls: ToolCall[] = [...toolCallBuf.entries()]
@@ -115,6 +145,11 @@ export async function* runAgentLoop(
     }
 
     for (const call of toolCalls) {
+      if (opts.signal?.aborted) {
+        yield { type: "interrupted" };
+        return;
+      }
+
       let args: Record<string, unknown> = {};
       try {
         args = JSON.parse(call.function.arguments || "{}") as Record<string, unknown>;
@@ -152,6 +187,12 @@ export async function* runAgentLoop(
       }
 
       const result = await tool.execute(args, ctx);
+
+      if (opts.signal?.aborted) {
+        yield { type: "interrupted" };
+        return;
+      }
+
       yield { type: "tool_call_result", id: call.id, name: tool.name, result };
 
       const toolMsg: ChatMessage = { role: "tool", toolCallId: call.id, content: result.output };

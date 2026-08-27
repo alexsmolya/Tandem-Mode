@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { render, Text, Box, useApp } from "ink";
 import readline from "node:readline";
+import path from "node:path";
+import { mkdir } from "node:fs/promises";
 import { resolveApiKey, resolveBaseUrl } from "./config/env.js";
 import { loadConfig } from "./config/store.js";
 import { DEFAULT_CONFIG } from "./config/schema.js";
@@ -10,12 +12,17 @@ import { SYSTEM_PROMPT } from "./repl/system-prompt.js";
 import { runAgentLoop, type AgentEvent } from "./agent/loop.js";
 import { UsageAccumulator } from "./agent/usage.js";
 import { isPeakHour } from "./agent/pricing.js";
+import { saveClipboardImage } from "./agent/clipboard.js";
 import { runOrchestration } from "./orchestrator/orchestrate.js";
 import { appendSessionMessage, createSession, findLatestSession, loadSessionMessages } from "./agent/session.js";
 import type { RuntimeState } from "./repl/state.js";
 import type { ChatMessage, ThinkingConfig } from "./deepseek/types.js";
 
-type Approver = (toolName: string, args: Record<string, unknown>) => Promise<boolean>;
+interface ApprovalResponse {
+  approved: boolean;
+  always: boolean;
+}
+type Approver = (toolName: string, args: Record<string, unknown>) => Promise<ApprovalResponse>;
 export type ModelId = "deepseek-v4-pro" | "deepseek-v4-flash";
 
 export interface TurnConfig {
@@ -23,6 +30,7 @@ export interface TurnConfig {
   model: ModelId;
   thinking?: ThinkingConfig;
   budgetUsd?: number;
+  signal?: AbortSignal;
 }
 
 interface ToolLogEntry {
@@ -61,10 +69,12 @@ function TurnView({
           console.error(`[--yes] auto-odobreno: ${toolName}(${JSON.stringify(args)})`);
           return true;
         }
+        if (state.alwaysApprovedTools.has(toolName)) return true;
         setPending({ toolName, args });
-        const approved = await askApproval(toolName, args);
+        const response = await askApproval(toolName, args);
         setPending(null);
-        return approved;
+        if (response.always) state.alwaysApprovedTools.add(toolName);
+        return response.approved;
       };
 
       for await (const event of runAgentLoop(turn.messages, {
@@ -76,6 +86,7 @@ function TurnView({
         approve,
         ...(turn.thinking !== undefined ? { thinking: turn.thinking } : {}),
         ...(turn.budgetUsd !== undefined ? { budgetUsd: turn.budgetUsd } : {}),
+        ...(turn.signal !== undefined ? { signal: turn.signal } : {}),
       })) {
         handleEvent(event);
       }
@@ -118,6 +129,9 @@ function TurnView({
             setNotice(
               `Budžet od $${event.budgetUsd.toFixed(2)} je dostignut (potrošeno ~$${event.spentUsd.toFixed(4)}). Petlja je zaustavljena pre sledećeg poziva — sesija je sačuvana, poveci budžet sa /budget i nastavi.`
             );
+            break;
+          case "interrupted":
+            setNotice("⏹ Prekinuto (ESC). Sesija je sačuvana do ove tačke.");
             break;
         }
       }
@@ -169,7 +183,7 @@ function TurnView({
           <Text color="yellow" bold>
             Destruktivna akcija: {pending.toolName}({JSON.stringify(pending.args)})
           </Text>
-          <Text dimColor>Odgovor se traži ispod, u redu za unos.</Text>
+          <Text dimColor>y = dozvoli, n = odbij, a = uvek dozvoli ovaj alat ovoj sesiji (odgovor ispod)</Text>
         </Box>
       )}
 
@@ -213,7 +227,12 @@ async function runTurnConfig(state: RuntimeState, turn: TurnConfig, askApproval:
   });
 }
 
-async function runTurn(state: RuntimeState, userText: string, askApproval: Approver): Promise<void> {
+async function runTurn(
+  state: RuntimeState,
+  userText: string,
+  askApproval: Approver,
+  signal?: AbortSignal
+): Promise<void> {
   const userMsg: ChatMessage = { role: "user", content: userText };
   state.messages.push(userMsg);
   await appendSessionMessage(state.session, userMsg);
@@ -222,33 +241,54 @@ async function runTurn(state: RuntimeState, userText: string, askApproval: Appro
   const turn: TurnConfig = { messages: state.messages, model: state.model };
   if (thinking !== undefined) turn.thinking = thinking;
   if (state.budgetUsd !== undefined) turn.budgetUsd = state.budgetUsd;
+  if (signal !== undefined) turn.signal = signal;
 
   await runTurnConfig(state, turn, askApproval);
 }
 
-async function runPlanTask(state: RuntimeState, task: string, askApproval: Approver): Promise<void> {
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
+}
+
+async function runPlanTask(
+  state: RuntimeState,
+  task: string,
+  askApproval: Approver,
+  signal?: AbortSignal
+): Promise<void> {
   try {
     await runOrchestration(task, {
       cwd: state.cwd,
       env: state.env,
       maxReviewLoops: state.maxReviewLoops,
       usage: state.usage,
+      ...(signal !== undefined ? { signal } : {}),
       runWorkerTurn: (turn) => runTurnConfig(state, turn, askApproval),
     });
   } catch (err) {
-    console.error(`Greška u orkestraciji: ${err instanceof Error ? err.message : String(err)}`);
+    if (isAbortError(err)) {
+      console.log("⏹ Orkestracija prekinuta (ESC).");
+    } else {
+      console.error(`Greška u orkestraciji: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 }
 
-/** Za single-shot poteze: sopstveni for-await čitač linija samo za y/n odobrenja. */
+function parseApprovalAnswer(raw: string): ApprovalResponse {
+  const lower = raw.trim().toLowerCase();
+  if (lower === "a" || lower === "always") return { approved: true, always: true };
+  return { approved: lower === "y", always: false };
+}
+
+/** Za single-shot poteze: sopstveni for-await čitač linija samo za y/n/a odobrenja. */
 function createLineApprover(): { approve: Approver; close: () => void } {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const resolveRef: { current: ((approved: boolean) => void) | null } = { current: null };
+  const resolveRef: { current: ((response: ApprovalResponse) => void) | null } = { current: null };
 
   const consumeLines = async (): Promise<void> => {
     for await (const rawLine of rl) {
       if (resolveRef.current) {
-        resolveRef.current(rawLine.trim().toLowerCase() === "y");
+        resolveRef.current(parseApprovalAnswer(rawLine));
         resolveRef.current = null;
       }
     }
@@ -256,8 +296,8 @@ function createLineApprover(): { approve: Approver; close: () => void } {
   void consumeLines();
 
   const approve: Approver = (toolName, args) => {
-    console.log(`\nDozvoli izvršavanje ${toolName}(${JSON.stringify(args)})? (y/n)`);
-    return new Promise<boolean>((resolve) => {
+    console.log(`\nDozvoli izvršavanje ${toolName}(${JSON.stringify(args)})? (y/n/a — a = uvek dozvoli ovaj alat)`);
+    return new Promise<ApprovalResponse>((resolve) => {
       resolveRef.current = resolve;
     });
   };
@@ -288,16 +328,26 @@ async function runRepl(state: RuntimeState): Promise<void> {
     if (!closed) rl.prompt();
   };
 
-  const approvalRef: { current: ((approved: boolean) => void) | null } = { current: null };
+  const approvalRef: { current: ((response: ApprovalResponse) => void) | null } = { current: null };
   let turnActive = false;
   let lastTurn: Promise<void> = Promise.resolve();
 
   const askApproval: Approver = (toolName, args) => {
-    console.log(`\nDozvoli izvršavanje ${toolName}(${JSON.stringify(args)})? (y/n)`);
-    return new Promise<boolean>((resolve) => {
+    console.log(`\nDozvoli izvršavanje ${toolName}(${JSON.stringify(args)})? (y/n/a — a = uvek dozvoli ovaj alat)`);
+    return new Promise<ApprovalResponse>((resolve) => {
       approvalRef.current = resolve;
     });
   };
+
+  // ESC prekida trenutni potez. Radi samo na pravom TTY-ju — piped/scriptovani
+  // unos ne generiše keypress evente, pa je interrupt tiho no-op tamo.
+  const abortRef: { current: AbortController | null } = { current: null };
+  readline.emitKeypressEvents(process.stdin);
+  process.stdin.on("keypress", (_str, key: { name?: string } | undefined) => {
+    if (key?.name === "escape" && abortRef.current) {
+      abortRef.current.abort();
+    }
+  });
 
   showPrompt();
 
@@ -305,7 +355,7 @@ async function runRepl(state: RuntimeState): Promise<void> {
     const line = rawLine.trim();
 
     if (approvalRef.current) {
-      approvalRef.current(line.toLowerCase() === "y");
+      approvalRef.current(parseApprovalAnswer(line));
       approvalRef.current = null;
       continue;
     }
@@ -320,6 +370,17 @@ async function runRepl(state: RuntimeState): Promise<void> {
       continue;
     }
 
+    const beginTurn = (run: (signal: AbortSignal) => Promise<void>): void => {
+      turnActive = true;
+      const controller = new AbortController();
+      abortRef.current = controller;
+      lastTurn = run(controller.signal).finally(() => {
+        abortRef.current = null;
+        turnActive = false;
+        showPrompt();
+      });
+    };
+
     if (line.startsWith("/plan ")) {
       const task = line.slice("/plan ".length).trim();
       if (!task) {
@@ -327,11 +388,29 @@ async function runRepl(state: RuntimeState): Promise<void> {
         showPrompt();
         continue;
       }
-      turnActive = true;
-      lastTurn = runPlanTask(state, task, askApproval).finally(() => {
-        turnActive = false;
+      beginTurn((signal) => runPlanTask(state, task, askApproval, signal));
+      continue;
+    }
+
+    if (line === "/paste" || line.startsWith("/paste ")) {
+      const extra = line.slice("/paste".length).trim();
+      try {
+        const destDir = path.join(state.cwd, ".tandem", "tmp");
+        await mkdir(destDir, { recursive: true });
+        const destPath = path.join(destDir, `paste-${Date.now()}.png`);
+        const ok = await saveClipboardImage(destPath);
+        if (!ok) {
+          console.log("Nema slike u clipboard-u.");
+          showPrompt();
+          continue;
+        }
+        const relPath = path.relative(state.cwd, destPath);
+        const text = `[slika zalepljena iz clipboard-a: ${relPath}] ${extra || "Pogledaj sliku i opiši šta vidiš."}`;
+        beginTurn((signal) => runTurn(state, text, askApproval, signal));
+      } catch (err) {
+        console.log(`Greška: ${err instanceof Error ? err.message : String(err)}`);
         showPrompt();
-      });
+      }
       continue;
     }
 
@@ -342,11 +421,7 @@ async function runRepl(state: RuntimeState): Promise<void> {
       continue;
     }
 
-    turnActive = true;
-    lastTurn = runTurn(state, line, askApproval).finally(() => {
-      turnActive = false;
-      showPrompt();
-    });
+    beginTurn((signal) => runTurn(state, line, askApproval, signal));
   }
 
   await lastTurn;
@@ -460,6 +535,7 @@ async function main(): Promise<void> {
     reasoningEffort: parsed.effort ?? config.defaultReasoningEffort ?? DEFAULT_CONFIG.defaultReasoningEffort,
     maxReviewLoops: parsed.maxReviewLoops ?? config.maxReviewLoops ?? DEFAULT_CONFIG.maxReviewLoops,
     autoApprove: parsed.autoApprove,
+    alwaysApprovedTools: new Set(),
     session,
     messages,
     usage: new UsageAccumulator(),
@@ -469,10 +545,17 @@ async function main(): Promise<void> {
 
   if (parsed.prompt) {
     const approver = createLineApprover();
+    const controller = new AbortController();
+    if (process.stdin.isTTY) {
+      readline.emitKeypressEvents(process.stdin);
+      process.stdin.on("keypress", (_str, key: { name?: string } | undefined) => {
+        if (key?.name === "escape") controller.abort();
+      });
+    }
     if (parsed.plan) {
-      await runPlanTask(state, parsed.prompt, approver.approve);
+      await runPlanTask(state, parsed.prompt, approver.approve, controller.signal);
     } else {
-      await runTurn(state, parsed.prompt, approver.approve);
+      await runTurn(state, parsed.prompt, approver.approve, controller.signal);
     }
     approver.close();
   } else {

@@ -17,7 +17,11 @@ const SAFE_COMMAND_PATTERNS: RegExp[] = [
   /^(which|where)\s+\S/i,
 ];
 
-function runShell(command: string, cwd: string): Promise<{ output: string; exitCode: number | null }> {
+function runShell(
+  command: string,
+  cwd: string,
+  signal?: AbortSignal
+): Promise<{ output: string; exitCode: number | null }> {
   const isWindows = process.platform === "win32";
   const exe = isWindows ? "powershell.exe" : "/bin/sh";
   const args = isWindows ? ["-NoProfile", "-NonInteractive", "-Command", command] : ["-c", command];
@@ -34,6 +38,17 @@ function runShell(command: string, cwd: string): Promise<{ output: string; exitC
       reject(new Error(`Komanda je prekinuta posle ${TIMEOUT_MS / 1000}s (timeout).`));
     }, TIMEOUT_MS);
 
+    const onAbort = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill();
+      const abortError = new Error("Komanda prekinuta (ESC).");
+      abortError.name = "AbortError";
+      reject(abortError);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+
     child.stdout.on("data", (chunk: Buffer) => {
       output += chunk.toString("utf8");
     });
@@ -44,12 +59,14 @@ function runShell(command: string, cwd: string): Promise<{ output: string; exitC
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       reject(err);
     });
     child.on("close", (exitCode) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       resolve({ output, exitCode });
     });
   });
@@ -73,7 +90,7 @@ export const shellTool: ToolDefinition = {
   async execute(args, ctx) {
     const command = String(args["command"] ?? "");
     try {
-      const { output, exitCode } = await runShell(command, ctx.cwd);
+      const { output, exitCode } = await runShell(command, ctx.cwd, ctx.signal);
       const truncated = output.length > MAX_OUTPUT_CHARS ? output.slice(0, MAX_OUTPUT_CHARS) + "\n... (isečeno)" : output;
       return {
         output: `[exit code ${exitCode}]\n${truncated || "(nema izlaza)"}`,

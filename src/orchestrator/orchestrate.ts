@@ -17,6 +17,7 @@ export interface WorkerTurn {
   messages: ChatMessage[];
   model: "deepseek-v4-pro" | "deepseek-v4-flash";
   thinking?: ThinkingConfig;
+  signal?: AbortSignal;
 }
 
 export interface OrchestrationOptions {
@@ -24,6 +25,7 @@ export interface OrchestrationOptions {
   env: TandemEnv;
   maxReviewLoops: number;
   usage: UsageAccumulator;
+  signal?: AbortSignal;
   runWorkerTurn: (turn: WorkerTurn) => Promise<void>;
 }
 
@@ -34,7 +36,7 @@ function buildStablePrefix(plan: Plan, repoMap: string): string {
 export async function runOrchestration(task: string, opts: OrchestrationOptions): Promise<void> {
   console.log("\n📋 Planiram...\n");
   const repoMap = await buildRepoMap(opts.cwd);
-  const { plan, usage: plannerUsage } = await runPlanner(opts.env, task, repoMap);
+  const { plan, usage: plannerUsage } = await runPlanner(opts.env, task, repoMap, opts.signal);
   opts.usage.add("deepseek-v4-pro", plannerUsage);
 
   console.log(`Plan: ${plan.summary}`);
@@ -44,19 +46,21 @@ export async function runOrchestration(task: string, opts: OrchestrationOptions)
   const workerThinking: ThinkingConfig = { reasoningEffort: "high" };
 
   for (const t of plan.tasks) {
+    if (opts.signal?.aborted) return;
     console.log(`\n🔧 Worker: ${t.description}\n`);
     const messages: ChatMessage[] = [
       { role: "system", content: stablePrefix },
       { role: "user", content: `Task: ${t.description}\nKriterijum prihvatanja: ${t.acceptanceCriteria}` },
     ];
-    await opts.runWorkerTurn({ messages, model: "deepseek-v4-flash", thinking: workerThinking });
+    await opts.runWorkerTurn({ messages, model: "deepseek-v4-flash", thinking: workerThinking, ...(opts.signal ? { signal: opts.signal } : {}) });
   }
 
   let loops = 0;
   for (;;) {
+    if (opts.signal?.aborted) return;
     console.log("\n🔍 Reviewer proverava...\n");
-    const diffResult = await gitDiffTool.execute({}, { cwd: opts.cwd, env: opts.env });
-    const { result: review, usage: reviewUsage } = await runReviewer(opts.env, task, plan, diffResult.output);
+    const diffResult = await gitDiffTool.execute({}, { cwd: opts.cwd, env: opts.env, usage: opts.usage });
+    const { result: review, usage: reviewUsage } = await runReviewer(opts.env, task, plan, diffResult.output, opts.signal);
     opts.usage.add("deepseek-v4-pro", reviewUsage);
 
     if (review.approved) {
@@ -74,12 +78,13 @@ export async function runOrchestration(task: string, opts: OrchestrationOptions)
     }
 
     for (const correction of review.corrections) {
+      if (opts.signal?.aborted) return;
       console.log(`\n🔧 Worker (korekcija): ${correction.description}\n`);
       const messages: ChatMessage[] = [
         { role: "system", content: stablePrefix },
         { role: "user", content: `Korekcija od reviewera: ${correction.description}` },
       ];
-      await opts.runWorkerTurn({ messages, model: "deepseek-v4-flash", thinking: workerThinking });
+      await opts.runWorkerTurn({ messages, model: "deepseek-v4-flash", thinking: workerThinking, ...(opts.signal ? { signal: opts.signal } : {}) });
     }
   }
 }

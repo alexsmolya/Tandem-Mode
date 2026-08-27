@@ -24,8 +24,11 @@ export const viewImageTool: ToolDefinition = {
     const resolved = path.resolve(ctx.cwd, imagePath);
 
     try {
-      const description = await describeImage(ctx.env, resolved, question);
-      return { output: description, isError: false };
+      const { text, usage } = await describeImage(ctx.env, resolved, question, ctx.signal);
+      // vision-exp nema objavljen poseban cenovnik — trošak se prijavljuje
+      // po Flash tarifi kao najbolja dostupna procena (stvarni tokeni su tačni).
+      ctx.usage.add("deepseek-v4-flash", usage);
+      return { output: text, isError: false };
     } catch (err) {
       return { output: `Greška pri analizi slike: ${(err as Error).message}`, isError: true };
     }

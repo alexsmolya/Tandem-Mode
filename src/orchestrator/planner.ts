@@ -19,7 +19,8 @@ Odgovori ISKLJUČIVO validnim JSON-om, bez markdown ograda, tačno ove šeme:
 export async function runPlanner(
   env: TandemEnv,
   task: string,
-  repoMap: string
+  repoMap: string,
+  signal?: AbortSignal
 ): Promise<{ plan: Plan; usage: UsageInfo }> {
   const result = await chatCompletionOnce(env, {
     model: "deepseek-v4-pro",
@@ -29,6 +30,7 @@ export async function runPlanner(
       { role: "system", content: PLANNER_SYSTEM_PROMPT },
       { role: "user", content: `Zadatak:\n${task}\n\nMapa repozitorijuma:\n${repoMap}` },
     ],
+    ...(signal ? { signal } : {}),
   });
 
   let parsed: unknown;

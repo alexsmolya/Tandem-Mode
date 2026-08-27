@@ -280,6 +280,32 @@ verifikovano live pozivom).
 `orchestrate.ts`, dva worker poziva u istoj orkestraciji.
 **Datum:** 2026-08-27
 
+## 10. Web search preko Responses API-ja
+
+**Status:** ✅
+
+- Web search je dokumentovan **isključivo** u Responses API-ju (`POST /responses`),
+  ne u Chat Completions — potvrđeno i u dokumentaciji i u testu (chat completions
+  ne prihvata `web_search` tool tip).
+- Poziv je **stateless** i radi izolovano, bez potrebe za state managementom —
+  isti obrazac kao `view_image`: poseban, jednokratan poziv čiji tekstualni
+  rezultat ulazi nazad u glavnu tool-calling petlju kao string.
+- Zahtev: `{"model": "...", "input": "upit", "tools": [{"type":"web_search"}],
+  "tool_choice": {"type":"web_search"}}`. Odgovor: `output` niz sa
+  `web_search_call` stavkama (šta je pretraženo) i `message` stavkom
+  (`content[0].text` je finalni tekst).
+- Usage polja su drugačija od Chat Completions: `input_tokens`/`output_tokens`/
+  `total_tokens` umesto `prompt_tokens`/`completion_tokens`, i `cached_tokens`
+  umesto `prompt_cache_hit_tokens`/`miss_tokens` — mapirano u naš `UsageInfo`
+  oblik u `src/deepseek/webSearch.ts`.
+- Nema objavljen zaseban cenovnik za Responses API pozive — trošak se u
+  `web_search`/`view_image` alatima prijavljuje po Flash tarifi kao
+  najbolja dostupna procena (stvarni tokeni ostaju tačni iz API-ja).
+
+**Izvor:** https://api-docs.deepseek.com/guides/responses_api,
+https://api-docs.deepseek.com/api/create-response/.
+**Datum:** 2026-08-27
+
 ## Otvorena pitanja van originalne liste
 
 - Paralelni tool pozivi (više `tool_calls` u jednom odgovoru) — nije testirano.

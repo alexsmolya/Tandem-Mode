@@ -20,7 +20,8 @@ export async function runReviewer(
   env: TandemEnv,
   originalTask: string,
   plan: Plan,
-  gitDiff: string
+  gitDiff: string,
+  signal?: AbortSignal
 ): Promise<{ result: ReviewResult; usage: UsageInfo }> {
   const response = await chatCompletionOnce(env, {
     model: "deepseek-v4-pro",
@@ -33,6 +34,7 @@ export async function runReviewer(
         content: `Originalni zadatak:\n${originalTask}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nGit diff:\n${gitDiff.slice(0, 15000)}`,
       },
     ],
+    ...(signal ? { signal } : {}),
   });
 
   let parsed: unknown;

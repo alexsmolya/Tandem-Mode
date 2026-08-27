@@ -200,8 +200,41 @@ Navedeno u spec-u ali nije potrebno za launch — i vrednije kao mamac
 za kontributore nego kao sopstveni rad:
 - `/save-profile` i `/profile` (profili)
 - `/compact` (ručna kompakcija konteksta)
-- `/diff`, `/plan` komande
-- Linux/macOS fino poliranje (ako arhitektura prirodno ne pokrije)
+- `/diff` komanda (`/plan` je urađen u M3, ranije nego što je plan predvideo)
+- Linux/macOS fino poliranje (ako arhitektura prirodno ne pokrije) —
+  clipboard paste slike (`/paste`) trenutno samo Windows, isto obrazloženje
+- **Notification hook** (Slack webhook na završetak taska/orkestracije) —
+  postoji kod `deepcode-cli` (konkurentski projekat), dobar kandidat za
+  kontributorski mamac po istom principu kao gornje stavke
+
+## 4a. Dodato posle poređenja sa deepcode-cli (github.com/lessweb/deepcode-cli)
+
+Zreliji konkurentski projekat (2.2k zvezdica) je otkrio prave rupe koje
+originalni spec nije predvideo — implementirano:
+- **ESC-interrupt**: `AbortSignal` provučen kroz ceo stack (streaming poziv,
+  chatCompletionOnce, shell child proces) — ESC u REPL-u prekida trenutni
+  potez, čuva parcijalan sadržaj/reasoning kao poruku, sesija ostaje validna.
+  Radi samo na pravom TTY-ju (piped/scriptovani unos nema keypress evente).
+- **`/fork`**: nova sesija sa kopijom trenutne istorije, originalna sesija
+  netaknuta.
+- **"Uvek dozvoli" odobrenje** (`y`/`n`/`a` na destruktivni tool poziv) —
+  `a` pamti dozvolu za taj alat do kraja sesije, smanjuje umor od stalnog
+  potvrđivanja istog alata.
+- **`web_search` alat**: preko DeepSeek Responses API-ja (`/responses`,
+  `web_search` tool, stateless poziv) — isti obrazac izolacije kao
+  `view_image`. Vidi docs/api-notes.md #10.
+- **`/paste`**: slika iz Windows clipboard-a (PowerShell + .NET
+  Clipboard/Bitmap) → sačuvana u `.tandem/tmp/`, agent je odmah pogleda
+  preko `view_image`. Testirano uživo (crveni kvadrat → tačno prepoznat).
+- **Usput otkriven i ispravljen propust**: `view_image` je od M3 pravio
+  stvaran naplaćen poziv čiji usage se nikad nije beležio u `/usage`/budžet
+  (ni web_search ne bi, da nije otkriveno na vreme) — `ToolContext` sad nosi
+  `usage: UsageAccumulator`, oba alata prijavljuju trošak po Flash tarifi
+  (najbolja procena, nema objavljen poseban cenovnik za vision-exp/Responses).
+
+Namerno NE kopirano od deepcode-cli: MCP integracija (već van scope-a, tačka 5),
+Skills/plugin sistem (prerano za veličinu ovog projekta), VSCode plugin
+(van scope-a, IDE ekstenzije).
 
 ## 5. Van scope-a (spec tačke 28 i 31 — ne diramo)
 

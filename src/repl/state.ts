@@ -12,6 +12,8 @@ export interface RuntimeState {
   budgetUsd?: number;
   maxReviewLoops: number;
   autoApprove: boolean;
+  /** Alati koje je korisnik označio "uvek dozvoli" za trenutnu sesiju. */
+  alwaysApprovedTools: Set<string>;
   session: Session;
   messages: ChatMessage[];
   usage: UsageAccumulator;

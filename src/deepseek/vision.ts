@@ -1,6 +1,8 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { TandemEnv } from "../config/env.js";
+import { parseUsage } from "./client.js";
+import type { UsageInfo } from "./types.js";
 
 const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
 
@@ -15,11 +17,17 @@ const MIME_BY_EXT: Record<string, string> = {
 const DEFAULT_QUESTION =
   "Opiši detaljno šta se vidi na slici — ako je screenshot buga, fokusiraj se na vidljivu grešku, tekst poruke, i UI kontekst.";
 
+export interface VisionResult {
+  text: string;
+  usage: UsageInfo;
+}
+
 export async function describeImage(
   env: TandemEnv,
   imagePath: string,
-  question?: string
-): Promise<string> {
+  question?: string,
+  signal?: AbortSignal
+): Promise<VisionResult> {
   const ext = path.extname(imagePath).toLowerCase();
   const mime = MIME_BY_EXT[ext];
   if (!mime) {
@@ -40,6 +48,7 @@ export async function describeImage(
       "Content-Type": "application/json",
       Authorization: `Bearer ${env.apiKey}`,
     },
+    ...(signal ? { signal } : {}),
     body: JSON.stringify({
       model: "deepseek-v4-flash-vision-exp",
       stream: false,
@@ -61,12 +70,14 @@ export async function describeImage(
     throw new Error(`DeepSeek vision API error ${response.status}: ${body}`);
   }
 
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) {
+  const data = (await response.json()) as Record<string, unknown>;
+  const message = (data["choices"] as Array<Record<string, unknown>> | undefined)?.[0]?.["message"] as
+    | Record<string, unknown>
+    | undefined;
+  const content = message?.["content"];
+  if (typeof content !== "string" || !content) {
     throw new Error("Vision odgovor nije sadržao tekst.");
   }
-  return content;
+
+  return { text: content, usage: parseUsage((data["usage"] as Record<string, unknown>) ?? {}) };
 }

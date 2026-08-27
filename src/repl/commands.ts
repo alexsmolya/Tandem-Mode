@@ -19,7 +19,9 @@ const HELP_TEXT = `Komande:
   /usage                                      utrošak tokena, procenjena cena, off-peak projekcija
   /budget [iznos]                             prikaži ili postavi budžet u USD
   /new                                        nova sesija
+  /fork                                       nova sesija sa kopijom trenutne istorije
   /resume [id]                                nastavi poslednju ili navedenu sesiju
+  /paste [poruka]                             pošalji sliku iz clipboard-a (Windows)
   /clear                                      očisti ekran
   /help                                       ova lista
   /exit                                       izlaz`;
@@ -120,6 +122,16 @@ export async function handleCommand(line: string, state: RuntimeState): Promise<
       state.messages = [systemMsg];
       await appendSessionMessage(state.session, systemMsg);
       console.log(`Nova sesija: ${state.session.id}`);
+      return "continue";
+    }
+
+    case "fork": {
+      const forked = await createSession(state.cwd);
+      for (const msg of state.messages) {
+        await appendSessionMessage(forked, msg);
+      }
+      state.session = forked;
+      console.log(`Sesija forkovana: ${forked.id} (${state.messages.length} poruka preneto, originalna sesija netaknuta)`);
       return "continue";
     }
 
