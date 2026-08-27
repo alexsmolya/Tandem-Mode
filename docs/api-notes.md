@@ -228,6 +228,58 @@ verifikovano live pozivom).
 
 ---
 
+## 8. Vision (dodato u M3)
+
+**Status:** ✅
+
+- Samo `deepseek-v4-flash-vision-exp` podržava slike — ostali modeli vraćaju
+  grešku ako se pošalje `image_url`.
+- Slike su dozvoljene **isključivo u `user` porukama** — `system`/`assistant`
+  sa slikom vraćaju 400.
+- Format: standardan OpenAI `content` niz —
+  `[{"type":"text","text":"..."},{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,..."}}]`.
+  Podržani formati: JPEG/PNG/GIF/WebP. Base64/URL slika do 32 MiB, ceo request
+  do 48 MiB, do 600 slika po pozivu. Slika se skalira na ~800×800, ~384 tokena.
+- Tool-calling i thinking mode u kombinaciji sa vision nisu dokumentovani —
+  zato `view_image` alat (`src/agent/tools/viewImage.ts`) radi **izolovan**
+  non-streaming poziv (`thinking: disabled`, bez `tools`) i vraća čist tekst
+  nazad glavnom agentu kao rezultat alata. Glavna petlja nikad ne šalje
+  `tools`/`thinking` zajedno sa slikom.
+- Live test uživo (real screenshot, kroz punu tool-calling petlju sa
+  `deepseek-v4-flash`): model je sam prepoznao potrebu da pozove
+  `view_image`, dobio tačan opis nazad i odgovorio korisniku ispravno.
+
+**Izvor:** https://api-docs.deepseek.com/guides/vision; live test —
+`view_image` alat, `deepseek-v4-flash-vision-exp`.
+**Datum:** 2026-08-27
+
+## 9. KV cache — detaljna mehanika (za M3 cache-aware arhitekturu)
+
+**Status:** ✅ (dokumentacija; brojevi iz M0 #6 ostaju živi test)
+
+- Cache pogađa samo pri **potpunom poklapanju prefiksa** — "cache prefix
+  unit" mora biti identičan bajt-za-bajt, ne samo delimično sličan.
+  Potvrđuje pristup iz plana: stabilan prefiks (system + tools + repo mapa +
+  plan) mora biti IDENTIČAN kroz sve worker pozive u istoj orkestraciji,
+  varijabilni deo (task) ide na kraj.
+- Cache jedinice nastaju na tri mesta: (1) kraj user inputa i kraj model
+  outputa svakog poziva, (2) zajednički prefiks kad više zahteva deli
+  početni sadržaj, (3) fiksni intervali kod dugih inputa/outputa.
+- TTL: sati do par dana, automatsko brisanje — dovoljno da ostane toplo
+  kroz celu jednu orkestraciju (planner → workeri → reviewer) pa i između
+  odvojenih pokretanja istog dana.
+- Nema eksplicitnog cache-key parametra — keširanje je potpuno automatsko na
+  osnovu sadržaja `messages` (i verovatno `tools`, mada to dokumentacija ne
+  precizira eksplicitno — zato worker petlja šalje identičan `tools` niz na
+  svaki poziv, ne samo identičan `messages` prefiks).
+- **Live potvrda u orkestraciji:** dva uzastopna worker poziva sa istim
+  stabilnim prefiksom (plan+repo mapa) pokazala su rastući cache hit
+  (4608 → 7168 cached tokena) tačno kako mehanika predviđa.
+
+**Izvor:** https://api-docs.deepseek.com/guides/kv_cache; live test —
+`orchestrate.ts`, dva worker poziva u istoj orkestraciji.
+**Datum:** 2026-08-27
+
 ## Otvorena pitanja van originalne liste
 
 - Paralelni tool pozivi (više `tool_calls` u jednom odgovoru) — nije testirano.

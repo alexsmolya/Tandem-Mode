@@ -9,11 +9,21 @@ import { handleCommand } from "./repl/commands.js";
 import { SYSTEM_PROMPT } from "./repl/system-prompt.js";
 import { runAgentLoop, type AgentEvent } from "./agent/loop.js";
 import { UsageAccumulator } from "./agent/usage.js";
+import { isPeakHour } from "./agent/pricing.js";
+import { runOrchestration } from "./orchestrator/orchestrate.js";
 import { appendSessionMessage, createSession, findLatestSession, loadSessionMessages } from "./agent/session.js";
 import type { RuntimeState } from "./repl/state.js";
-import type { ChatMessage } from "./deepseek/types.js";
+import type { ChatMessage, ThinkingConfig } from "./deepseek/types.js";
 
 type Approver = (toolName: string, args: Record<string, unknown>) => Promise<boolean>;
+export type ModelId = "deepseek-v4-pro" | "deepseek-v4-flash";
+
+export interface TurnConfig {
+  messages: ChatMessage[];
+  model: ModelId;
+  thinking?: ThinkingConfig;
+  budgetUsd?: number;
+}
 
 interface ToolLogEntry {
   id: string;
@@ -26,12 +36,12 @@ interface ToolLogEntry {
 
 function TurnView({
   state,
-  userText,
+  turn,
   askApproval,
   onDone,
 }: {
   state: RuntimeState;
-  userText: string;
+  turn: TurnConfig;
   askApproval: Approver;
   onDone: () => void;
 }) {
@@ -46,10 +56,6 @@ function TurnView({
 
   useEffect(() => {
     async function run(): Promise<void> {
-      const userMsg: ChatMessage = { role: "user", content: userText };
-      state.messages.push(userMsg);
-      await appendSessionMessage(state.session, userMsg);
-
       const approve = async (toolName: string, args: Record<string, unknown>): Promise<boolean> => {
         if (state.autoApprove) {
           console.error(`[--yes] auto-odobreno: ${toolName}(${JSON.stringify(args)})`);
@@ -61,17 +67,15 @@ function TurnView({
         return approved;
       };
 
-      const thinking = state.thinkingEnabled ? { reasoningEffort: state.reasoningEffort } : undefined;
-
-      for await (const event of runAgentLoop(state.messages, {
+      for await (const event of runAgentLoop(turn.messages, {
         env: state.env,
-        model: state.model,
+        model: turn.model,
         cwd: state.cwd,
         session: state.session,
         usage: state.usage,
         approve,
-        ...(thinking !== undefined ? { thinking } : {}),
-        ...(state.budgetUsd !== undefined ? { budgetUsd: state.budgetUsd } : {}),
+        ...(turn.thinking !== undefined ? { thinking: turn.thinking } : {}),
+        ...(turn.budgetUsd !== undefined ? { budgetUsd: turn.budgetUsd } : {}),
       })) {
         handleEvent(event);
       }
@@ -172,10 +176,37 @@ function TurnView({
   );
 }
 
-async function runTurn(state: RuntimeState, userText: string, askApproval: Approver): Promise<void> {
+async function runTurnConfig(state: RuntimeState, turn: TurnConfig, askApproval: Approver): Promise<void> {
   await new Promise<void>((resolve) => {
-    render(<TurnView state={state} userText={userText} askApproval={askApproval} onDone={resolve} />);
+    render(<TurnView state={state} turn={turn} askApproval={askApproval} onDone={resolve} />);
   });
+}
+
+async function runTurn(state: RuntimeState, userText: string, askApproval: Approver): Promise<void> {
+  const userMsg: ChatMessage = { role: "user", content: userText };
+  state.messages.push(userMsg);
+  await appendSessionMessage(state.session, userMsg);
+
+  const thinking = state.thinkingEnabled ? { reasoningEffort: state.reasoningEffort } : undefined;
+  const turn: TurnConfig = { messages: state.messages, model: state.model };
+  if (thinking !== undefined) turn.thinking = thinking;
+  if (state.budgetUsd !== undefined) turn.budgetUsd = state.budgetUsd;
+
+  await runTurnConfig(state, turn, askApproval);
+}
+
+async function runPlanTask(state: RuntimeState, task: string, askApproval: Approver): Promise<void> {
+  try {
+    await runOrchestration(task, {
+      cwd: state.cwd,
+      env: state.env,
+      maxReviewLoops: state.maxReviewLoops,
+      usage: state.usage,
+      runWorkerTurn: (turn) => runTurnConfig(state, turn, askApproval),
+    });
+  } catch (err) {
+    console.error(`Greška u orkestraciji: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 /** Za single-shot poteze: sopstveni for-await čitač linija samo za y/n odobrenja. */
@@ -212,6 +243,9 @@ function createLineApprover(): { approve: Approver; close: () => void } {
  */
 async function runRepl(state: RuntimeState): Promise<void> {
   console.log(`Tandem Mode — sesija ${state.session.id}. /help za komande, /exit za izlaz.\n`);
+  if (isPeakHour(new Date())) {
+    console.log("⚠ Trenutno je peak sat (01–04h ili 06–10h UTC) — cene su duplo veće nego off-peak.\n");
+  }
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: "> " });
   let closed = false;
@@ -254,6 +288,21 @@ async function runRepl(state: RuntimeState): Promise<void> {
       continue;
     }
 
+    if (line.startsWith("/plan ")) {
+      const task = line.slice("/plan ".length).trim();
+      if (!task) {
+        console.log("Upotreba: /plan <opis zadatka>");
+        showPrompt();
+        continue;
+      }
+      turnActive = true;
+      lastTurn = runPlanTask(state, task, askApproval).finally(() => {
+        turnActive = false;
+        showPrompt();
+      });
+      continue;
+    }
+
     if (line.startsWith("/")) {
       const outcome = await handleCommand(line, state);
       if (outcome === "exit") break;
@@ -276,18 +325,22 @@ interface ParsedArgv {
   prompt: string;
   resume: boolean;
   autoApprove: boolean;
+  plan: boolean;
   model?: "deepseek-v4-pro" | "deepseek-v4-flash";
   effort?: "low" | "high" | "max";
   budgetUsd?: number;
+  maxReviewLoops?: number;
 }
 
 function parseArgv(argv: string[]): ParsedArgv {
   const rest: string[] = [];
   let resume = false;
   let autoApprove = false;
+  let plan = false;
   let model: ParsedArgv["model"];
   let effort: ParsedArgv["effort"];
   let budgetUsd: number | undefined;
+  let maxReviewLoops: number | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -295,6 +348,8 @@ function parseArgv(argv: string[]): ParsedArgv {
       resume = true;
     } else if (arg === "--yes" || arg === "-y") {
       autoApprove = true;
+    } else if (arg === "--plan") {
+      plan = true;
     } else if (arg === "--model") {
       const value = argv[++i];
       if (value === "deepseek-v4-pro" || value === "deepseek-v4-flash") model = value;
@@ -304,15 +359,19 @@ function parseArgv(argv: string[]): ParsedArgv {
     } else if (arg === "--budget") {
       const value = Number(argv[++i]);
       if (Number.isFinite(value) && value > 0) budgetUsd = value;
+    } else if (arg === "--max-review-loops") {
+      const value = Number(argv[++i]);
+      if (Number.isFinite(value) && value > 0) maxReviewLoops = value;
     } else if (arg !== undefined) {
       rest.push(arg);
     }
   }
 
-  const parsed: ParsedArgv = { prompt: rest.join(" ").trim(), resume, autoApprove };
+  const parsed: ParsedArgv = { prompt: rest.join(" ").trim(), resume, autoApprove, plan };
   if (model !== undefined) parsed.model = model;
   if (effort !== undefined) parsed.effort = effort;
   if (budgetUsd !== undefined) parsed.budgetUsd = budgetUsd;
+  if (maxReviewLoops !== undefined) parsed.maxReviewLoops = maxReviewLoops;
   return parsed;
 }
 
@@ -367,6 +426,7 @@ async function main(): Promise<void> {
     model: parsed.model ?? config.defaultModel ?? DEFAULT_CONFIG.defaultModel,
     thinkingEnabled: true,
     reasoningEffort: parsed.effort ?? config.defaultReasoningEffort ?? DEFAULT_CONFIG.defaultReasoningEffort,
+    maxReviewLoops: parsed.maxReviewLoops ?? config.maxReviewLoops ?? DEFAULT_CONFIG.maxReviewLoops,
     autoApprove: parsed.autoApprove,
     session,
     messages,
@@ -377,7 +437,11 @@ async function main(): Promise<void> {
 
   if (parsed.prompt) {
     const approver = createLineApprover();
-    await runTurn(state, parsed.prompt, approver.approve);
+    if (parsed.plan) {
+      await runPlanTask(state, parsed.prompt, approver.approve);
+    } else {
+      await runTurn(state, parsed.prompt, approver.approve);
+    }
     approver.close();
   } else {
     await runRepl(state);

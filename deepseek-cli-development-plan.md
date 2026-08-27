@@ -148,19 +148,35 @@ ponovo dodeljena unutar petlje/IIFE-a suzi se na `never` — zaobiđeno `{curren
 ref-objektom umesto gole `let`.
 
 ### M3 — Orkestracija: planner / worker / reviewer (2–3 nedelje)
-- [ ] Planner (Pro, thinking ON, effort MAX) → plan kao **JSON schema**,
-      ne slobodan tekst — worker mora dobiti mašinski parsabilan zadatak
-- [ ] Worker (Flash) sa svežim, minimalnim kontekstom po tasku —
-      nikad ceo planner razgovor (spec tačka 13)
-- [ ] Reviewer (Pro): dobija original task + plan + git diff + build/test
-      rezultate → APPROVE ili strukturirane korekcije
-- [ ] `max_review_loops` konfigurabilan, default 3, bez beskonačnih petlji
-- [ ] **Cache-aware prompt arhitektura:** sistemski prompt + repo mapa +
-      plan kao stabilan prefiks, varijabilni deo na kraju → worker petlja
-      na $0.007/M cache-hit ceni. Merljivo, ide u README.
-- [ ] **Peak/off-peak svest:** `/usage` pokazuje "ova sesija bi off-peak
-      koštala $X"; upozorenje pri startu u peak satima. DeepSeek-native
-      feature koji generički alati nemaju.
+- [x] Planner (Pro, thinking ON, effort MAX) → plan kao **JSON** (`response_format:
+      json_object`), validiran runtime type guard-om pre upotrebe —
+      worker dobija mašinski parsabilan zadatak (`src/orchestrator/planner.ts`)
+- [x] Worker (Flash) sa svežim, minimalnim kontekstom po tasku — svaki task
+      dobija NOVI `messages` niz (stabilan prefiks + task), nikad ceo
+      planner razgovor (`src/orchestrator/orchestrate.ts`)
+- [x] Reviewer (Pro): dobija original task + plan + git diff → APPROVE ili
+      strukturirane korekcije, JSON (`src/orchestrator/reviewer.ts`).
+      **Build/test rezultate reviewer još ne dobija** — ostaje za M4 kad
+      benchmark harness definiše kako se build/test pokreće po projektu.
+- [x] `max_review_loops` konfigurabilan (config + `--max-review-loops`),
+      default 3, testirano uživo — zaustavlja se bez beskonačne petlje
+- [x] **Cache-aware prompt arhitektura:** sistemski prompt + repo mapa + plan
+      kao stabilan prefiks (bajt-za-bajt identičan), task na kraju — potvrđeno
+      uživo, cache hit rastao 4608→7168 tokena kroz dva worker poziva
+- [x] **Peak/off-peak svest:** `/usage` pokazuje off-peak projekciju cene;
+      upozorenje pri startu REPL-a u peak satima
+
+**Dodatak van originalnog plana — Vision (`view_image` alat):** korisnik
+može reći agentu gde je screenshot/slika buga, agent sam pozove
+`deepseek-v4-flash-vision-exp` (izolovano, bez tools/thinking) i dobije
+tekstualni opis nazad u svoj kontekst. Testirano uživo kroz punu tool-calling
+petlju. Vidi `docs/api-notes.md` #8.
+
+**Pravi bug nađen uživo:** `git diff` ne prikazuje potpuno nove (untracked)
+fajlove — reviewer je zato 3x zaredom odbijao ispravno urađen posao ("diff je
+prazan"). Ispravljeno u `git_diff` alatu sa `git add --intent-to-add --all`
+pre diff-a (markira nove fajlove bez stage-ovanja sadržaja). Utiče i na
+agentovu sopstvenu upotrebu `git_diff` alata, ne samo na reviewer.
 
 ### M4 — Benchmark + launch (1–2 nedelje)
 - [ ] Benchmark harness: isti set taskova nad realnim repoom

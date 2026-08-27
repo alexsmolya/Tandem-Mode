@@ -35,6 +35,14 @@ export interface ChatCompletionParams {
   messages: ChatMessage[];
   thinking?: ThinkingConfig;
   tools?: ToolSpec[];
+  /** Zahteva validan JSON string kao `content` — šema se opisuje u promptu, API je ne nameće. */
+  jsonOutput?: boolean;
+}
+
+export interface ChatCompletionResult {
+  content: string;
+  reasoningContent: string;
+  usage: UsageInfo;
 }
 
 export interface UsageInfo {

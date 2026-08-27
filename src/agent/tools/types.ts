@@ -1,7 +1,9 @@
 import type { ToolSpec } from "../../deepseek/types.js";
+import type { TandemEnv } from "../../config/env.js";
 
 export interface ToolContext {
   cwd: string;
+  env: TandemEnv;
 }
 
 export interface ToolResult {

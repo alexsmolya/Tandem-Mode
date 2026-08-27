@@ -1,5 +1,5 @@
 import type { TandemEnv } from "../config/env.js";
-import type { ChatCompletionParams, ChatMessage, StreamEvent, UsageInfo } from "./types.js";
+import type { ChatCompletionParams, ChatCompletionResult, ChatMessage, StreamEvent, UsageInfo } from "./types.js";
 
 async function* readSseLines(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
   const reader = body.getReader();
@@ -67,6 +67,7 @@ export async function* streamChatCompletion(
       thinking: params.thinking
         ? { type: "enabled", reasoning_effort: params.thinking.reasoningEffort }
         : { type: "disabled" },
+      response_format: params.jsonOutput ? { type: "json_object" } : undefined,
     }),
   });
 
@@ -120,4 +121,43 @@ export async function* streamChatCompletion(
       yield { type: "done", finishReason };
     }
   }
+}
+
+/** Non-streaming poziv za planner/reviewer — bez tools, samo tekst/JSON + usage odjednom. */
+export async function chatCompletionOnce(
+  env: TandemEnv,
+  params: Omit<ChatCompletionParams, "tools">
+): Promise<ChatCompletionResult> {
+  const response = await fetch(`${env.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: params.model,
+      messages: params.messages.map(toWireMessage),
+      stream: false,
+      thinking: params.thinking
+        ? { type: "enabled", reasoning_effort: params.thinking.reasoningEffort }
+        : { type: "disabled" },
+      response_format: params.jsonOutput ? { type: "json_object" } : undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`DeepSeek API error ${response.status}: ${body}`);
+  }
+
+  const data = (await response.json()) as Record<string, unknown>;
+  const message = (data["choices"] as Array<Record<string, unknown>> | undefined)?.[0]?.["message"] as
+    | Record<string, unknown>
+    | undefined;
+
+  return {
+    content: typeof message?.["content"] === "string" ? message["content"] : "",
+    reasoningContent: typeof message?.["reasoning_content"] === "string" ? message["reasoning_content"] : "",
+    usage: parseUsage((data["usage"] as Record<string, unknown>) ?? {}),
+  };
 }

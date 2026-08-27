@@ -11,11 +11,12 @@ import { SYSTEM_PROMPT } from "./system-prompt.js";
 export type CommandOutcome = "continue" | "exit";
 
 const HELP_TEXT = `Komande:
+  /plan <zadatak>                             planner/worker/reviewer orkestracija
   /model [deepseek-v4-pro|deepseek-v4-flash]  prikaži ili promeni model
   /thinking [on|off]                          uključi/isključi thinking mode
   /effort [low|high|max]                      prikaži ili promeni reasoning effort
   /status                                     trenutna podešavanja i sesija
-  /usage                                      utrošak tokena i procenjena cena
+  /usage                                      utrošak tokena, procenjena cena, off-peak projekcija
   /budget [iznos]                             prikaži ili postavi budžet u USD
   /new                                        nova sesija
   /resume [id]                                nastavi poslednju ili navedenu sesiju
@@ -74,6 +75,7 @@ export async function handleCommand(line: string, state: RuntimeState): Promise<
       console.log(`Model: ${state.model}`);
       console.log(`Thinking: ${state.thinkingEnabled ? `on (${state.reasoningEffort})` : "off"}`);
       console.log(`Budžet: ${state.budgetUsd !== undefined ? `$${state.budgetUsd.toFixed(2)}` : "nije postavljen"}`);
+      console.log(`Max review loops: ${state.maxReviewLoops}`);
       console.log(`Poruka u istoriji: ${state.messages.length}`);
       return "continue";
     }
@@ -81,11 +83,15 @@ export async function handleCommand(line: string, state: RuntimeState): Promise<
     case "usage": {
       const totals = state.usage.totals();
       const cost = state.usage.estimatedCostUsd();
+      const offPeakCost = state.usage.offPeakEquivalentCostUsd();
       console.log(`Pozivi: ${state.usage.callCount}`);
       console.log(
         `Tokeni: ${totals.promptTokens} in (${totals.promptCacheHitTokens} cached) / ${totals.completionTokens} out`
       );
       console.log(`Procenjena cena: $${cost.toFixed(4)}`);
+      if (Math.abs(cost - offPeakCost) > 0.0000001) {
+        console.log(`Ova sesija bi off-peak koštala: $${offPeakCost.toFixed(4)}`);
+      }
       if (state.budgetUsd !== undefined) {
         console.log(`Budžet: $${state.budgetUsd.toFixed(2)} (iskorišćeno ${((cost / state.budgetUsd) * 100).toFixed(0)}%)`);
       }

@@ -43,4 +43,9 @@ export class UsageAccumulator {
   estimatedCostUsd(): number {
     return this.entries.reduce((sum, e) => sum + estimateCallCost(e.model, e.usage, e.isPeak), 0);
   }
+
+  /** Koliko bi ova sesija koštala da je svaki poziv pao u off-peak prozor. */
+  offPeakEquivalentCostUsd(): number {
+    return this.entries.reduce((sum, e) => sum + estimateCallCost(e.model, e.usage, false), 0);
+  }
 }

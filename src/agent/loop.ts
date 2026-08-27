@@ -40,7 +40,7 @@ export async function* runAgentLoop(
   messages: ChatMessage[],
   opts: AgentLoopOptions
 ): AsyncGenerator<AgentEvent> {
-  const ctx: ToolContext = { cwd: opts.cwd };
+  const ctx: ToolContext = { cwd: opts.cwd, env: opts.env };
   const maxIterations = opts.maxIterations ?? 25;
 
   for (let iteration = 0; iteration < maxIterations; iteration++) {

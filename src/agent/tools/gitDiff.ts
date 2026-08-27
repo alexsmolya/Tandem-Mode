@@ -22,6 +22,17 @@ export const gitDiffTool: ToolDefinition = {
     const scopePath = args["path"] ? String(args["path"]) : undefined;
     const gitArgs = ["diff", ...(staged ? ["--cached"] : []), ...(scopePath ? ["--", scopePath] : [])];
 
+    // Plain `git diff` ne prikazuje potpuno nove (untracked) fajlove.
+    // --intent-to-add ih markira u indeksu bez stage-ovanja sadržaja, pa se
+    // pojave u diff-u kao dodati fajlovi — bezopasno i reverzibilno.
+    try {
+      await execFileAsync("git", ["add", "--intent-to-add", "--all", ...(scopePath ? ["--", scopePath] : [])], {
+        cwd: ctx.cwd,
+      });
+    } catch {
+      // Nije git repo ili git nije dostupan — poziv ispod će to jasno prijaviti.
+    }
+
     try {
       const { stdout } = await execFileAsync("git", gitArgs, { cwd: ctx.cwd, maxBuffer: 10 * 1024 * 1024 });
       const output = stdout.length > MAX_OUTPUT_CHARS ? stdout.slice(0, MAX_OUTPUT_CHARS) + "\n... (isečeno)" : stdout;

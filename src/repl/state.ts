@@ -10,6 +10,7 @@ export interface RuntimeState {
   thinkingEnabled: boolean;
   reasoningEffort: "low" | "high" | "max";
   budgetUsd?: number;
+  maxReviewLoops: number;
   autoApprove: boolean;
   session: Session;
   messages: ChatMessage[];

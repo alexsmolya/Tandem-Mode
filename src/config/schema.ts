@@ -3,9 +3,11 @@ export interface TandemConfig {
   defaultReasoningEffort?: "low" | "high" | "max";
   budgetUsd?: number;
   baseUrl?: string;
+  maxReviewLoops?: number;
 }
 
-export const DEFAULT_CONFIG: Required<Pick<TandemConfig, "defaultModel" | "defaultReasoningEffort">> = {
+export const DEFAULT_CONFIG: Required<Pick<TandemConfig, "defaultModel" | "defaultReasoningEffort" | "maxReviewLoops">> = {
   defaultModel: "deepseek-v4-pro",
   defaultReasoningEffort: "high",
+  maxReviewLoops: 3,
 };
