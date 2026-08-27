@@ -1,0 +1,31 @@
+{
+  "name": "tandem-mode",
+  "version": "0.0.1",
+  "private": true,
+  "description": "DeepSeek coding CLI — planner/worker/reviewer agentic loop",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "tandem": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.tsx",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "ink": "^5.0.1",
+    "react": "^18.3.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,0 +1,147 @@
+import type { TandemEnv } from "../config/env.js";
+import { streamChatCompletion } from "../deepseek/client.js";
+import type { ChatMessage, ThinkingConfig, ToolCall, UsageInfo } from "../deepseek/types.js";
+import { findTool, toolSpecs, type ToolContext, type ToolResult } from "./tools/index.js";
+import { appendSessionMessage, type Session } from "./session.js";
+import type { UsageAccumulator } from "./usage.js";
+
+export type AgentEvent =
+  | { type: "reasoning_delta"; delta: string }
+  | { type: "content_delta"; delta: string }
+  | { type: "tool_call_start"; id: string; name: string; args: Record<string, unknown> }
+  | { type: "tool_call_result"; id: string; name: string; result: ToolResult }
+  | { type: "tool_call_denied"; id: string; name: string }
+  | { type: "usage"; usage: UsageInfo }
+  | { type: "final"; content: string }
+  | { type: "max_iterations_reached" };
+
+export interface AgentLoopOptions {
+  env: TandemEnv;
+  model: "deepseek-v4-pro" | "deepseek-v4-flash";
+  thinking: ThinkingConfig;
+  cwd: string;
+  session: Session;
+  usage: UsageAccumulator;
+  maxIterations?: number;
+  /** Pozvano pre svake destruktivne akcije. */
+  approve: (toolName: string, args: Record<string, unknown>) => Promise<boolean>;
+}
+
+/**
+ * `messages` mora već sadržati system + početni user zahtev (i istoriju ako
+ * se nastavlja sesija) — pozivalac je odgovoran da TE poruke upiše u sesiju
+ * pre poziva. Petlja perzistuje samo poruke koje sama generiše (assistant/tool).
+ */
+export async function* runAgentLoop(
+  messages: ChatMessage[],
+  opts: AgentLoopOptions
+): AsyncGenerator<AgentEvent> {
+  const ctx: ToolContext = { cwd: opts.cwd };
+  const maxIterations = opts.maxIterations ?? 25;
+
+  for (let iteration = 0; iteration < maxIterations; iteration++) {
+    let reasoning = "";
+    let content = "";
+    const toolCallBuf = new Map<number, { id?: string; name?: string; args: string }>();
+
+    for await (const ev of streamChatCompletion(opts.env, {
+      model: opts.model,
+      messages,
+      thinking: opts.thinking,
+      tools: toolSpecs,
+    })) {
+      switch (ev.type) {
+        case "reasoning_delta":
+          reasoning += ev.delta;
+          yield { type: "reasoning_delta", delta: ev.delta };
+          break;
+        case "content_delta":
+          content += ev.delta;
+          yield { type: "content_delta", delta: ev.delta };
+          break;
+        case "tool_call_delta": {
+          const buf = toolCallBuf.get(ev.index) ?? { args: "" };
+          if (ev.id) buf.id = ev.id;
+          if (ev.name) buf.name = ev.name;
+          if (ev.argumentsDelta) buf.args += ev.argumentsDelta;
+          toolCallBuf.set(ev.index, buf);
+          break;
+        }
+        case "usage":
+          opts.usage.add(opts.model, ev.usage);
+          yield { type: "usage", usage: ev.usage };
+          break;
+        case "done":
+          break;
+      }
+    }
+
+    const toolCalls: ToolCall[] = [...toolCallBuf.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, v]) => ({
+        id: v.id ?? "",
+        type: "function" as const,
+        function: { name: v.name ?? "", arguments: v.args },
+      }));
+
+    const assistantMessage: ChatMessage =
+      toolCalls.length > 0
+        ? { role: "assistant", content: content || null, reasoningContent: reasoning, toolCalls }
+        : { role: "assistant", content: content || null };
+
+    messages.push(assistantMessage);
+    await appendSessionMessage(opts.session, assistantMessage);
+
+    if (toolCalls.length === 0) {
+      yield { type: "final", content };
+      return;
+    }
+
+    for (const call of toolCalls) {
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(call.function.arguments || "{}") as Record<string, unknown>;
+      } catch {
+        // Ostaje {} — alat će prijaviti nedostajuće/neispravne argumente.
+      }
+
+      const tool = findTool(call.function.name);
+      if (!tool) {
+        const toolMsg: ChatMessage = {
+          role: "tool",
+          toolCallId: call.id,
+          content: `Nepoznat alat: ${call.function.name}`,
+        };
+        messages.push(toolMsg);
+        await appendSessionMessage(opts.session, toolMsg);
+        continue;
+      }
+
+      yield { type: "tool_call_start", id: call.id, name: tool.name, args };
+
+      if (tool.isDestructive(args)) {
+        const approved = await opts.approve(tool.name, args);
+        if (!approved) {
+          yield { type: "tool_call_denied", id: call.id, name: tool.name };
+          const toolMsg: ChatMessage = {
+            role: "tool",
+            toolCallId: call.id,
+            content: "Korisnik je odbio izvršavanje ovog alata.",
+          };
+          messages.push(toolMsg);
+          await appendSessionMessage(opts.session, toolMsg);
+          continue;
+        }
+      }
+
+      const result = await tool.execute(args, ctx);
+      yield { type: "tool_call_result", id: call.id, name: tool.name, result };
+
+      const toolMsg: ChatMessage = { role: "tool", toolCallId: call.id, content: result.output };
+      messages.push(toolMsg);
+      await appendSessionMessage(opts.session, toolMsg);
+    }
+  }
+
+  yield { type: "max_iterations_reached" };
+}
