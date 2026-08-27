@@ -35,4 +35,6 @@ export interface BenchmarkResult {
   durationMs: number;
   /** Dimenzija 8 (arhitektura) je namerno kvalitativna — popunjava se ručno/naknadno, ne ovde. */
   architectureNotes?: string;
+  /** Postavljeno kad je sam pokušaj pukao (mrežna greška, malformisan JSON i sl.) — ostala polja su tada default/prazna. */
+  error?: string;
 }

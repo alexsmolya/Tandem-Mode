@@ -11,8 +11,18 @@ start.
 ## Status
 
 Early stage (M0–M3 of the [development plan](./deepseek-cli-development-plan.md)
-are done). Usable today for real coding tasks against a local repo; benchmark
-numbers and a 1.0 launch are still ahead (M4).
+are done, M4 in progress). Usable today for real coding tasks against a local
+repo.
+
+First benchmark run is in — see [full results](./docs/benchmark-results.md).
+Headline: all three configurations (Pro-only, Flash-only, orchestration)
+fixed 4/4 injected bugs correctly in a real WooCommerce plugin, with a clean
+`php -l` and zero unnecessary file changes. But for this class of task
+(single-file, well-scoped fixes), orchestration cost ~9.5× more and took
+~19× longer than Pro-only for the same correctness — the opposite of what
+you'd want orchestration for. Read as: orchestration's overhead needs a
+bigger, more decomposable task to pay for itself, which this first run didn't
+test. Reported as-is, not adjusted to fit expectations.
 
 ## Features
 

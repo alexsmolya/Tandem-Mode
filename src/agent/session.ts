@@ -21,7 +21,16 @@ export async function createSession(cwd: string): Promise<Session> {
 }
 
 export async function appendSessionMessage(session: Session, message: ChatMessage): Promise<void> {
-  await appendFile(session.filePath, JSON.stringify(message) + "\n", "utf8");
+  const line = JSON.stringify(message) + "\n";
+  try {
+    await appendFile(session.filePath, line, "utf8");
+  } catch (err) {
+    // Fajl/direktorijum je nestao ispod nas (npr. agent ga je obrisao kao
+    // "nepotreban") — rekreiraj i pokušaj jednom, umesto da srušiš petlju.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    await mkdir(path.dirname(session.filePath), { recursive: true });
+    await appendFile(session.filePath, line, "utf8");
+  }
 }
 
 export async function loadSessionMessages(filePath: string): Promise<ChatMessage[]> {

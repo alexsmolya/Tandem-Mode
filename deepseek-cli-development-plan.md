@@ -117,11 +117,11 @@ Verifikovati protiv živog API-ja i dokumentovati u `docs/api-notes.md`:
       y/n u terminalu, `--yes` flag za CI/automatizaciju uvek ispisuje
       upozorenje pre izvršavanja (nikad tiho)
 
-**Izlazni kriterijum (OTVORENO):** agent samostalno odradi jedan realan fix na
-WP pluginu (bitwise-bulk-price-wizard), end-to-end, sa `php -l` validacijom.
-Mehanika petlje je potvrđena na manjim zadacima u ovom repou i u scratch
-playground-u (read → edit → verifikacija, `--resume` kontinuitet) — pravi
-WP plugin test čeka pristup tom repou.
+**Izlazni kriterijum: ✅ ZATVOREN (2026-08-27).** Agent je samostalno odradio
+4 realna fixa na WP pluginu (bitwise-bulk-price-wizard), end-to-end, sa
+`php -l` validacijom — kao deo M4 benchmark serije (12/12 pokretanja tačno,
+videti `docs/benchmark-results.md`). Rađeno protiv posvećene lokalne kopije
+repoa, ne protiv radne kopije korisnika.
 
 ### M2 — UX sloj (1–2 nedelje)
 - [x] Komande: `/model`, `/thinking`, `/effort`, `/status`, `/usage`,
@@ -179,26 +179,33 @@ pre diff-a (markira nove fajlove bez stage-ovanja sadržaja). Utiče i na
 agentovu sopstvenu upotrebu `git_diff` alata, ne samo na reviewer.
 
 ### M4 — Benchmark + launch (1–2 nedelje)
-- [ ] **BLOKIRANO:** Benchmark harness treba realan repo (WP plugin ili
-      anonimizovana kopija) — odluka odložena (2026-08-27), radi se
-      neblokirani deo M4 dok se ne reši
 - [x] Dizajn benchmarka: tri konfiguracije (Pro-only/Flash-only/orkestracija),
       12 dimenzija iz spec tačke 30, format taska — `docs/benchmark-design.md`
-- [x] `src/benchmark/types.ts` — konkretni tipovi za rezultate, spremni da ih
-      runner popuni čim se target repo izabere
-- [ ] `src/benchmark/runner.ts` — sam runner, čeka target repo + task listu
-- [ ] Merenja: 12 dimenzija (dizajnirano, neizvršeno)
-- [ ] Rezultati u README **kakvi god da su** — i negativan nalaz je
-      kredibilitet (čeka runner)
-- [x] README: quick start, arhitektura, feature lista, disclaimer
-      (`README.md`). Terminal GIF (vhs) odložen — nema smisla snimati dok
-      benchmark ne da nešto vredno pokazivanja
+- [x] `src/benchmark/types.ts` — konkretni tipovi za rezultate
+- [x] `src/benchmark/runner.ts` — headless runner (bez Ink UI), reset/inject/
+      run/verify/report ciklus, otporan na pad pojedinačnog pokušaja
+- [x] **Benchmark izvršen (2026-08-27)** protiv bitwise-bulk-price-wizard
+      (posvećena lokalna kopija, ne radna kopija korisnika) — 4 ubačena bага
+      × 3 konfiguracije = 12 pokretanja. **12/12 tačno, 12/12 build (`php -l`)
+      prošao, 0 nepotrebnih izmena.** Detalji: `docs/benchmark-results.md`.
+- [x] Merenja: 9 od 12 dimenzija automatizovano i izmereno (completion,
+      correctness, build, test[=N/A, nema PHPUnit], unnecessary changes,
+      failed attempts, self-correct, tokeni, requesti, cena, vreme).
+      Dimenzija 8 (arhitektura) namerno ostaje kvalitativna/ručna, po dizajnu.
+- [x] Rezultati u README **kakvi god da su** — nalaz JE mešovit: kvalitet
+      identičan (100% kod sve tri konfiguracije), ali orkestracija je ~9.5x
+      skuplja i ~19x sporija od Pro-only za ovu klasu (mali, jednodatotečni)
+      zadataka — suprotno hipotezi iz sekcije 7 za OVU veličinu zadatka.
+      Otvoreno pitanje za sledeći benchmark: veći, multi-file zadaci gde
+      orkestracija ima šta da dekomponuje.
+- [x] README: quick start, arhitektura, feature lista, benchmark nalaz,
+      disclaimer (`README.md`). Terminal GIF (vhs) i dalje odložen.
 - [x] CONTRIBUTING.md + 6 unapred napisanih "good first issue" tiketa
       (`docs/good-first-issues.md`) — spremni za GitHub, čekaju da se otvore
       (`gh` CLI nije dostupan u ovom razvojnom okruženju)
 - [x] LICENSE (MIT)
-- [ ] Objava: r/LocalLLaMA, HN Show, DeepSeek Discord — čeka benchmark
-      rezultate, korisnikova odluka kad i šta se objavljuje
+- [ ] Objava: r/LocalLLaMA, HN Show, DeepSeek Discord — korisnikova odluka
+      kad i šta se objavljuje
 
 ---
 

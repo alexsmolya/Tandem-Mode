@@ -1,8 +1,8 @@
 # Benchmark design (M4)
 
-**Status:** design + types only. Not run yet — needs a decision on the target
-repo (real WP plugin, an anonymized copy, or a substitute project) before the
-runner can produce numbers.
+**Status:** built and run once — see [`benchmark-results.md`](./benchmark-results.md)
+for the actual numbers. This document stays as the design rationale; what's
+below under "still open" is what a *second, larger* run should add.
 
 ## Goal
 
@@ -57,16 +57,25 @@ interface BenchmarkTask {
 }
 ```
 
-## What's still open before this can run
+## What's still open for a second run
 
-- The target repo itself (see plan, M1 exit criterion — still unresolved).
-- A real task list (5–10 realistic tasks against that repo, each with
-  `expectedFiles`/`verify`/optionally `build`/`test`) — needs the repo first.
-- The runner (`src/benchmark/runner.ts`) that actually drives the three
-  configurations per task, using `runAgentLoop`/`runOrchestration` and a
-  fresh git worktree or `git stash`/`git reset --hard` between runs so tasks
-  don't interfere with each other.
-- A report formatter that turns the raw results into the README table.
+Run 1 used four small, single-file bugs against `bitwise-bulk-price-wizard`
+(a real, private WooCommerce plugin — see `docs/benchmark-results.md`). To
+actually stress-test the orchestration hypothesis rather than just exercise
+the harness, a follow-up run should add:
+
+- **Larger, genuinely multi-file tasks** — something that plausibly benefits
+  from decomposition (e.g. "add a new filter option end-to-end: DTO, query,
+  UI, validation"), since run 1's single-line bugs gave orchestration nothing
+  to parallelize and only measured its coordination overhead.
+- **More tasks per class** (run 1 had one task per bug type) for the
+  cost/time numbers to be less anecdotal.
+- **A real build/test dimension** — this target has no PHPUnit setup, so
+  "test" was `null` for every run in round 1. A target (or fixture) with
+  actual tests would make dimensions 3–4 meaningful instead of `php -l` only.
+- Comparing task sets across *different* target repos, to see how much of
+  round 1's result is about task size specifically vs. this particular
+  codebase.
 
 ## Reporting
 

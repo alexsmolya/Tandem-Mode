@@ -16,6 +16,8 @@ Odgovori ISKLJUČIVO validnim JSON-om, bez markdown ograda, tačno ove šeme:
 }
 "corrections" je prazan niz ako je approved true.`;
 
+const MAX_ATTEMPTS = 2;
+
 export async function runReviewer(
   env: TandemEnv,
   originalTask: string,
@@ -23,35 +25,42 @@ export async function runReviewer(
   gitDiff: string,
   signal?: AbortSignal
 ): Promise<{ result: ReviewResult; usage: UsageInfo }> {
-  const response = await chatCompletionOnce(env, {
-    model: "deepseek-v4-pro",
-    thinking: { reasoningEffort: "high" },
-    jsonOutput: true,
-    messages: [
-      { role: "system", content: REVIEWER_SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: `Originalni zadatak:\n${originalTask}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nGit diff:\n${gitDiff.slice(0, 15000)}`,
-      },
-    ],
-    ...(signal ? { signal } : {}),
-  });
+  let lastError: Error | undefined;
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(response.content);
-  } catch {
-    throw new Error(`Reviewer nije vratio validan JSON:\n${response.content.slice(0, 500)}`);
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const response = await chatCompletionOnce(env, {
+      model: "deepseek-v4-pro",
+      thinking: { reasoningEffort: "high" },
+      jsonOutput: true,
+      messages: [
+        { role: "system", content: REVIEWER_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: `Originalni zadatak:\n${originalTask}\n\nPlan:\n${JSON.stringify(plan, null, 2)}\n\nGit diff:\n${gitDiff.slice(0, 15000)}`,
+        },
+      ],
+      ...(signal ? { signal } : {}),
+    });
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(response.content);
+    } catch {
+      lastError = new Error(`Reviewer nije vratio validan JSON (pokušaj ${attempt}):\n${response.content.slice(0, 500)}`);
+      continue;
+    }
+    if (!isReviewResult(parsed)) {
+      lastError = new Error(`Reviewer JSON ne prati očekivanu šemu (pokušaj ${attempt}):\n${response.content.slice(0, 500)}`);
+      continue;
+    }
+
+    const result: ReviewResult = {
+      approved: parsed.approved,
+      notes: parsed.notes ?? "",
+      corrections: parsed.corrections ?? [],
+    };
+    return { result, usage: response.usage };
   }
-  if (!isReviewResult(parsed)) {
-    throw new Error(`Reviewer JSON ne prati očekivanu šemu:\n${response.content.slice(0, 500)}`);
-  }
 
-  const result: ReviewResult = {
-    approved: parsed.approved,
-    notes: parsed.notes ?? "",
-    corrections: parsed.corrections ?? [],
-  };
-
-  return { result, usage: response.usage };
+  throw lastError ?? new Error("Reviewer nije uspeo posle više pokušaja.");
 }
