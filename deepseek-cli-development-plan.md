@@ -179,18 +179,26 @@ pre diff-a (markira nove fajlove bez stage-ovanja sadržaja). Utiče i na
 agentovu sopstvenu upotrebu `git_diff` alata, ne samo na reviewer.
 
 ### M4 — Benchmark + launch (1–2 nedelje)
-- [ ] Benchmark harness: isti set taskova nad realnim repoom
-      (WP plugin ili anonimizovana kopija)
-- [ ] Tri konfiguracije: Pro-only / Flash-only / orkestracija
-- [ ] Merenja: 12 dimenzija iz spec tačke 30 (completion, correctness,
-      build, test, nepotrebne izmene, failed attempts, self-correct,
-      arhitektura, tokeni, requesti, cena, vreme)
+- [ ] **BLOKIRANO:** Benchmark harness treba realan repo (WP plugin ili
+      anonimizovana kopija) — odluka odložena (2026-08-27), radi se
+      neblokirani deo M4 dok se ne reši
+- [x] Dizajn benchmarka: tri konfiguracije (Pro-only/Flash-only/orkestracija),
+      12 dimenzija iz spec tačke 30, format taska — `docs/benchmark-design.md`
+- [x] `src/benchmark/types.ts` — konkretni tipovi za rezultate, spremni da ih
+      runner popuni čim se target repo izabere
+- [ ] `src/benchmark/runner.ts` — sam runner, čeka target repo + task listu
+- [ ] Merenja: 12 dimenzija (dizajnirano, neizvršeno)
 - [ ] Rezultati u README **kakvi god da su** — i negativan nalaz je
-      kredibilitet
-- [ ] README: terminal GIF (vhs), quick start, arhitektura dijagram,
-      disclaimer
-- [ ] CONTRIBUTING.md + 5–6 unapred otvorenih "good first issue" tiketa
-- [ ] Objava: r/LocalLLaMA, HN Show, DeepSeek Discord
+      kredibilitet (čeka runner)
+- [x] README: quick start, arhitektura, feature lista, disclaimer
+      (`README.md`). Terminal GIF (vhs) odložen — nema smisla snimati dok
+      benchmark ne da nešto vredno pokazivanja
+- [x] CONTRIBUTING.md + 6 unapred napisanih "good first issue" tiketa
+      (`docs/good-first-issues.md`) — spremni za GitHub, čekaju da se otvore
+      (`gh` CLI nije dostupan u ovom razvojnom okruženju)
+- [x] LICENSE (MIT)
+- [ ] Objava: r/LocalLLaMA, HN Show, DeepSeek Discord — čeka benchmark
+      rezultate, korisnikova odluka kad i šta se objavljuje
 
 ---
 
