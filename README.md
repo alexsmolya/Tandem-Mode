@@ -74,10 +74,23 @@ pnpm dev "explain what this repo does" --yes   # one-shot
 (Not yet published to npm — `npm install -g tandem-mode` is a launch-day step,
 not available today.)
 
+To try it as a real installed `tandem` command instead of `pnpm dev` (useful
+before publishing, or to use it in another project without cloning next to
+it):
+
+```bash
+pnpm build
+npm link          # registers `tandem` globally, pointing at this checkout
+tandem            # now works from any directory
+```
+
 On first run you'll be asked for a DeepSeek API key (get one at
 [platform.deepseek.com](https://platform.deepseek.com)) and a default
-model/reasoning effort. The key goes into your OS credential store (Windows
-Credential Manager, with automatic fallback), never into a config file or log.
+model/reasoning effort. On Windows the key is stored DPAPI-encrypted
+(tied to your OS user account, same protection Credential Manager itself
+relies on) in `%LOCALAPPDATA%\TandemMode\credentials.dat` — never in a
+config file or log. Linux/macOS storage isn't implemented yet (`DEEPSEEK_API_KEY`
+works everywhere in the meantime) — see good-first-issues.
 
 ## Usage
 
@@ -152,8 +165,8 @@ in the current directory) > **global** (`~/.tandem/config.json`).
 }
 ```
 
-The API key is never stored in these files — it lives in your OS credential
-store (or `DEEPSEEK_API_KEY` env var, which takes priority, for CI use).
+The API key is never stored in these files — it lives DPAPI-encrypted on
+Windows (or `DEEPSEEK_API_KEY` env var, which takes priority, for CI use).
 
 ## Development
 

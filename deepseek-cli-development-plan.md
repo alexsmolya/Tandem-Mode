@@ -130,9 +130,13 @@ repoa, ne protiv radne kopije korisnika.
       skriptovanje/CI, sad i sa `--model`/`--effort`/`--budget` flagovima
 - [x] Konfiguracija: session (runtime, slash komande) > project
       (`.tandem/config.json` u cwd) > global (`~/.tandem/config.json`)
-- [x] API ključ u OS credential storage (`cross-keychain` — Windows
-      Credential Manager, native binding sa CLI/file fallback-om), nikad u
-      logu; `DEEPSEEK_API_KEY` env i dalje radi kao eksplicitan override za CI
+- [x] API ključ u OS credential storage, nikad u logu; `DEEPSEEK_API_KEY` env
+      i dalje radi kao eksplicitan override za CI. **Izmenjeno 2026-08-27:**
+      `cross-keychain` zamenjen sopstvenim DPAPI wrapper-om (`src/config/credentials.ts`)
+      posle testa pravog global install-a — cross-keychain-ova auto-detekcija
+      backend-a je trošila 15-18s PO POZIVU na Windows-u čak i sa native
+      bindingom, direktan DPAPI poziv je ~500ms. Linux/macOS ide u
+      good-first-issues (`docs/good-first-issues.md` #7).
 - [x] Budget hard-stop: proverava se PRE svakog poziva u petlji, prekida bez
       greške, sesija ostaje sačuvana (JSONL), nastavak radi odmah posle
       `/budget <veći iznos>` u istoj sesiji

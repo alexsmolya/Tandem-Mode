@@ -95,3 +95,23 @@ runner) — worth designing once and reusing in both places.
 
 **Files:** `src/orchestrator/orchestrate.ts`, `src/orchestrator/reviewer.ts`,
 `src/config/schema.ts`.
+
+---
+
+### 7. Linux/macOS API key storage
+
+**Problem:** `src/config/credentials.ts` only works on Windows (DPAPI via
+PowerShell). We tried a cross-platform library here first (`cross-keychain`)
+and dropped it — its backend auto-detection took 15-18 seconds per call on
+Windows even with the native binding present and selected, which is an
+unacceptable startup delay for a CLI. Direct DPAPI calls are ~500ms instead.
+
+**Ask:** Add `getStoredApiKey`/`setStoredApiKey`/`deleteStoredApiKey`
+implementations for macOS (the `security` CLI, which ships with the OS) and
+Linux (`libsecret`/`secret-tool`, or a `gnome-keyring` equivalent), following
+the same three-function shape. Keep it fast — measure it, the whole reason
+this file doesn't use a generic library is that "cross-platform" and "fast on
+each platform" turned out to be in tension. `DEEPSEEK_API_KEY` already covers
+non-Windows users in the meantime.
+
+**Files:** `src/config/credentials.ts`.

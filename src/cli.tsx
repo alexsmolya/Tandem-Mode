@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import React, { useEffect, useState } from "react";
 import { render, Text, Box, useApp } from "ink";
 import readline from "node:readline";
