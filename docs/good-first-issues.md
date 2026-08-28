@@ -1,5 +1,7 @@
 # Good first issues (drafts)
 
+**English** | [Srpski](./good-first-issues.sr.md)
+
 Ready to be posted as GitHub issues. Each is deliberately scoped to be
 independent of the others and small enough for a first PR.
 

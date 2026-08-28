@@ -1,5 +1,7 @@
 # Tandem Mode
 
+**English** | [Srpski](./README.sr.md)
+
 A terminal coding agent built specifically for the DeepSeek API — not a generic
 LLM harness with DeepSeek bolted on. Interactive REPL, planner/worker/reviewer
 orchestration, cache-aware prompt architecture, and Windows-first from the
@@ -142,7 +144,8 @@ tandem "task"     ──┘   (single-shot, same agent loop, for scripts/CI)
 
 - `src/deepseek/` — thin client for DeepSeek's OpenAI-compatible API
   (streaming + non-streaming chat completions, vision, web search via
-  Responses API). See [`docs/api-notes.md`](./docs/api-notes.md) for the
+  Responses API). See [`docs/api-notes.en.md`](./docs/api-notes.en.md)
+  (Serbian original: [`docs/api-notes.md`](./docs/api-notes.md)) for the
   API behavior this is built against, verified live rather than assumed.
 - `src/agent/` — the tool-calling loop, tool implementations, session
   persistence, usage/cost tracking.

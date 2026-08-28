@@ -1,5 +1,7 @@
 # DeepSeek API — Notes (M0)
 
+**Srpski (kanonska verzija)** | [English](./api-notes.en.md)
+
 **Izvor istine** za sve dalje faze (spec, [[deepseek-cli-development-plan]]).
 Svaki nalaz ovde mora biti verifikovan protiv **živog API-ja** ili
 **zvanične dokumentacije** — ništa iz blog postova ili tuđih repoa bez

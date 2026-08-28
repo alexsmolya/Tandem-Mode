@@ -1,5 +1,7 @@
 # Contributing to Tandem Mode
 
+**English** | [Srpski](./CONTRIBUTING.sr.md)
+
 Thanks for taking a look. This is a small, early-stage project — a solo
 side effort turned open-source, not a company product — so process here is
 intentionally light.
@@ -24,11 +26,10 @@ to run anything that actually calls the model.
   escapes without a specific reason, `exactOptionalPropertyTypes` is on.
 - **No unverified API behavior.** Anything about the DeepSeek API that isn't
   obvious from a type signature should be checked against a live call or the
-  official docs and written down in [`docs/api-notes.md`](./docs/api-notes.md),
-  not assumed from a blog post or another project's code. See that file for
-  the format — Status / Nalaz / Izvor / Datum (yes, in Serbian; that's the
-  maintainer's working language for that file specifically, the codebase and
-  everything else is English).
+  official docs and written down in [`docs/api-notes.md`](./docs/api-notes.md)
+  (Serbian, the canonical version) / [`docs/api-notes.en.md`](./docs/api-notes.en.md)
+  (English), not assumed from a blog post or another project's code. See
+  that file for the format — Status / Nalaz / Izvor / Datum.
 - **Windows is first-class**, not an afterthought. If you touch path handling,
   the shell tool, or file I/O, test on Windows or say clearly in the PR that
   you didn't and it needs a check.
@@ -54,11 +55,14 @@ and `execute(args, ctx)`. Register it in `src/agent/tools/index.ts`.
 
 ## Good first issues
 
-Look for the `good first issue` label, or check section 4 of the
-[development plan](./deepseek-cli-development-plan.md) for features that were
-deliberately deferred rather than built by the maintainer — `/compact`,
-`/diff`, `/save-profile`/`/profile`, a notification hook on task completion,
-and Linux/macOS clipboard support for `/paste` are all open.
+Look for the `good first issue` label, or check
+[`docs/good-first-issues.md`](./docs/good-first-issues.md) for six scoped
+drafts — `/compact`, `/diff`, `/save-profile`/`/profile`, a notification hook
+on task completion, Linux/macOS clipboard support for `/paste`, and
+Linux/macOS API key storage are all open. Section 4 of the
+[development plan](./deepseek-cli-development-plan.md) (Serbian only — it's
+the maintainer's working roadmap, not user-facing docs) has the same list
+plus the reasoning behind each.
 
 ## Reporting bugs / API surprises
 

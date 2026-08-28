@@ -1,5 +1,7 @@
 # Benchmark design (M4)
 
+**English** | [Srpski](./benchmark-design.sr.md)
+
 **Status:** built and run once — see [`benchmark-results.md`](./benchmark-results.md)
 for the actual numbers. This document stays as the design rationale; what's
 below under "still open" is what a *second, larger* run should add.

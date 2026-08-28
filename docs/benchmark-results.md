@@ -1,5 +1,7 @@
 # Benchmark results — run 1
 
+**English** | [Srpski](./benchmark-results.sr.md)
+
 **Date:** 2026-08-27
 **Target:** `bitwise-bulk-price-wizard` — a real WooCommerce plugin (~1.6 MB,
 no build tooling, no test suite) not yet public. Benchmarked against a
