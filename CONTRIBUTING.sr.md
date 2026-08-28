@@ -55,12 +55,28 @@ i `execute(args, ctx)`. Registruj ga u `src/agent/tools/index.ts`.
 ## Good first issues
 
 Traži `good first issue` labelu, ili pogledaj
-[`docs/good-first-issues.sr.md`](./docs/good-first-issues.sr.md) za šest spremnih
-predloga — `/compact`, `/diff`, `/save-profile`/`/profile`, notification hook
-na završetak taska, Linux/macOS podrška za `/paste` clipboard, i Linux/macOS
+[`docs/good-first-issues.sr.md`](./docs/good-first-issues.sr.md) za sedam spremnih
+predloga — `/compact`, `/diff`, `/save-profile`/`/profile`, Linux/macOS
+podrška za `/paste` clipboard, notification hook na završetak taska,
+reviewer da vidi rezultate build/test-a (ne samo git diff), i Linux/macOS
 čuvanje API ključa su svi otvoreni. Sekcija 4
 [plana razvoja](./deepseek-cli-development-plan.md) ima istu listu plus
 obrazloženje zašto je svaka stavka odložena.
+
+Pregledanje i preuzimanje issue-a je najlakše preko
+[GitHub CLI-ja](https://cli.github.com/) (`gh`):
+
+```bash
+# Windows (winget)
+winget install --id GitHub.cli
+# macOS
+brew install gh
+# Linux
+# vidi https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+
+gh auth login
+gh issue list --repo zdrave08/Tandem-Mode --label "good first issue"
+```
 
 ## Prijava bagova / API iznenađenja
 

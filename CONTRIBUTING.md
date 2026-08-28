@@ -56,13 +56,29 @@ and `execute(args, ctx)`. Register it in `src/agent/tools/index.ts`.
 ## Good first issues
 
 Look for the `good first issue` label, or check
-[`docs/good-first-issues.md`](./docs/good-first-issues.md) for six scoped
-drafts — `/compact`, `/diff`, `/save-profile`/`/profile`, a notification hook
-on task completion, Linux/macOS clipboard support for `/paste`, and
-Linux/macOS API key storage are all open. Section 4 of the
+[`docs/good-first-issues.md`](./docs/good-first-issues.md) for seven scoped
+drafts — `/compact`, `/diff`, `/save-profile`/`/profile`, Linux/macOS
+clipboard support for `/paste`, a notification hook on task completion, the
+reviewer seeing build/test results (not just the git diff), and Linux/macOS
+API key storage are all open. Section 4 of the
 [development plan](./deepseek-cli-development-plan.md) (Serbian only — it's
 the maintainer's working roadmap, not user-facing docs) has the same list
 plus the reasoning behind each.
+
+Browsing and claiming issues is easiest with the
+[GitHub CLI](https://cli.github.com/) (`gh`):
+
+```bash
+# Windows (winget)
+winget install --id GitHub.cli
+# macOS
+brew install gh
+# Linux
+# see https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+
+gh auth login
+gh issue list --repo zdrave08/Tandem-Mode --label "good first issue"
+```
 
 ## Reporting bugs / API surprises
 
