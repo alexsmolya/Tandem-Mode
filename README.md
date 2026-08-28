@@ -1,5 +1,10 @@
 # Tandem Mode
 
+[![npm version](https://img.shields.io/npm/v/tandem-mode.svg)](https://www.npmjs.com/package/tandem-mode)
+[![license](https://img.shields.io/npm/l/tandem-mode.svg)](./LICENSE)
+[![node](https://img.shields.io/node/v/tandem-mode.svg)](./package.json)
+[![good first issues](https://img.shields.io/github/issues/zdrave08/Tandem-Mode/good%20first%20issue)](https://github.com/zdrave08/Tandem-Mode/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+
 **English** | [Srpski](./README.sr.md)
 
 A terminal coding agent built specifically for the DeepSeek API — not a generic
@@ -12,9 +17,8 @@ start.
 
 ## Status
 
-Early stage (M0–M3 of the [development plan](./deepseek-cli-development-plan.md)
-are done, M4 in progress). Usable today for real coding tasks against a local
-repo.
+M0–M4 of the [development plan](./deepseek-cli-development-plan.md) are done.
+Published on npm, usable today for real coding tasks against a local repo.
 
 First benchmark run is in — see [full results](./docs/benchmark-results.md).
 Headline: all three configurations (Pro-only, Flash-only, orchestration)
@@ -66,24 +70,20 @@ test. Reported as-is, not adjusted to fit expectations.
 ## Quick start
 
 ```bash
+npm install -g tandem-mode
+tandem            # interactive REPL
+tandem "explain what this repo does" --yes   # one-shot
+```
+
+Or from source (useful for contributing, or to track `main` instead of the
+latest npm release):
+
+```bash
 git clone https://github.com/zdrave08/Tandem-Mode.git
 cd Tandem-Mode
 pnpm install
 pnpm dev            # interactive REPL
 pnpm dev "explain what this repo does" --yes   # one-shot
-```
-
-(Not yet published to npm — `npm install -g tandem-mode` is a launch-day step,
-not available today.)
-
-To try it as a real installed `tandem` command instead of `pnpm dev` (useful
-before publishing, or to use it in another project without cloning next to
-it):
-
-```bash
-pnpm build
-npm link          # registers `tandem` globally, pointing at this checkout
-tandem            # now works from any directory
 ```
 
 On first run you'll be asked for a DeepSeek API key (get one at

@@ -1,5 +1,10 @@
 # Tandem Mode
 
+[![npm version](https://img.shields.io/npm/v/tandem-mode.svg)](https://www.npmjs.com/package/tandem-mode)
+[![license](https://img.shields.io/npm/l/tandem-mode.svg)](./LICENSE)
+[![node](https://img.shields.io/node/v/tandem-mode.svg)](./package.json)
+[![good first issues](https://img.shields.io/github/issues/zdrave08/Tandem-Mode/good%20first%20issue)](https://github.com/zdrave08/Tandem-Mode/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+
 [English](./README.md) | **Srpski**
 
 Terminalski coding agent napravljen posebno za DeepSeek API — ne generički
@@ -12,8 +17,8 @@ Windows kao prioritet od prvog dana.
 
 ## Status
 
-Rana faza (M0–M3 iz [plana razvoja](./deepseek-cli-development-plan.md) su
-gotovi, M4 u toku). Upotrebljiv već danas za stvarne coding zadatke nad
+M0–M4 iz [plana razvoja](./deepseek-cli-development-plan.md) su gotovi.
+Objavljen na npm-u, upotrebljiv već danas za stvarne coding zadatke nad
 lokalnim repozitorijumom.
 
 Prvi benchmark je gotov — pun izveštaj u
@@ -67,24 +72,20 @@ Prijavljeno onako kako jeste, ne prilagođeno očekivanjima.
 ## Brzi početak
 
 ```bash
+npm install -g tandem-mode
+tandem            # interaktivni REPL
+tandem "objasni sta radi ovaj repo" --yes   # jedan potez
+```
+
+Ili iz izvornog koda (korisno za doprinose, ili da pratiš `main` umesto
+poslednje npm verzije):
+
+```bash
 git clone https://github.com/zdrave08/Tandem-Mode.git
 cd Tandem-Mode
 pnpm install
 pnpm dev            # interaktivni REPL
 pnpm dev "objasni sta radi ovaj repo" --yes   # jedan potez
-```
-
-(Još nije objavljeno na npm-u — `npm install -g tandem-mode` je korak za
-dan lansiranja, danas nije dostupan.)
-
-Da probaš kao pravu instaliranu `tandem` komandu umesto `pnpm dev` (korisno
-pre objave, ili da koristiš alat u drugom projektu bez kloniranja pored
-njega):
-
-```bash
-pnpm build
-npm link          # registruje `tandem` globalno, pokazuje na ovaj checkout
-tandem            # sad radi iz bilo kog direktorijuma
 ```
 
 Pri prvom pokretanju bićeš pitan za DeepSeek API ključ (napravi ga na
