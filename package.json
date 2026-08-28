@@ -20,7 +20,7 @@
     "llm"
   ],
   "bin": {
-    "tandem": "./dist/cli.js"
+    "tandem": "dist/cli.js"
   },
   "files": [
     "dist"

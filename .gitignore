@@ -3,3 +3,4 @@ dist/
 .env
 *.log
 .tandem/
+npm_recovery_codes.txt
