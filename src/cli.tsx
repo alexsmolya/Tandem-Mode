@@ -116,7 +116,7 @@ function TurnView({
           case "usage": {
             const total = state.usage.totals();
             setUsageLine(
-              `tokens: ${total.promptTokens} in (${total.promptCacheHitTokens} cached) / ${total.completionTokens} out · ~$${state.usage.estimatedCostUsd().toFixed(4)} · ${state.usage.callCount} poziva`
+              `tokens: ${total.promptTokens} in (${total.promptCacheHitTokens} cached) / ${total.completionTokens} out · ~$${state.usage.estimatedCostUsd().toFixed(4)} · ${state.usage.callCount} calls`
             );
             break;
           }
@@ -153,7 +153,7 @@ function TurnView({
     <Box flexDirection="column" gap={1}>
       {reasoning.length > 0 && (
         <Box flexDirection="column">
-          <Text dimColor>✻ Razmišljam…</Text>
+          <Text dimColor>✻ Thinking…</Text>
           <Text dimColor>{reasoning}</Text>
         </Box>
       )}
