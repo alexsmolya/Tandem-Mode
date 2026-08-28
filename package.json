@@ -1,13 +1,30 @@
 {
   "name": "tandem-mode",
   "version": "0.0.1",
-  "private": true,
   "description": "DeepSeek coding CLI — planner/worker/reviewer agentic loop",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zdrave08/Tandem-Mode.git"
+  },
+  "homepage": "https://github.com/zdrave08/Tandem-Mode#readme",
+  "bugs": {
+    "url": "https://github.com/zdrave08/Tandem-Mode/issues"
+  },
+  "keywords": [
+    "deepseek",
+    "cli",
+    "ai",
+    "coding-agent",
+    "llm"
+  ],
   "bin": {
     "tandem": "./dist/cli.js"
   },
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=20"
   },
@@ -15,7 +32,8 @@
     "dev": "tsx src/cli.tsx",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "prepublishOnly": "pnpm build"
   },
   "dependencies": {
     "@inquirer/prompts": "^8.7.0",
